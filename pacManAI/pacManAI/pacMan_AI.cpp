@@ -702,6 +702,47 @@ namespace Pacman
 		}
 
 		GameField(const GameField &b) : GameField() { }
+
+
+		// Phycho-Melon
+		// 用于估值的一些函数，作为gameField的成员函数使用更方便
+
+		
+		int fieldValue[FIELD_MAX_HEIGHT][FIELD_MAX_WIDTH]; // 记录每格估值
+
+		// 吃豆估值
+		int fieldMinDistance[FIELD_MAX_HEIGHT][FIELD_MAX_WIDTH]; // 记录当前估值豆子到该格的最短距离
+		const int maxDistance = 7;
+		const int valueOfDistance[8] = { 128,32,16,8,4,2,1,0 };
+
+		inline void SetSmallFruitValue(int i, int j,int distance) {
+			if (distance == 0) { // 初始化估值记录，设置所有格到当前估值豆子的最短最短距离均为maxDistance
+				for (int _i = 0; _i < FIELD_MAX_HEIGHT; ++_i)
+					for (int _j = 0; _j < FIELD_MAX_WIDTH; ++_j)
+						fieldMinDistance[_i][_j] = maxDistance;
+			}
+			if (distance >= fieldMinDistance[i][j]) // 不是最短距离或达到最大距离
+				return;
+			fieldValue[i][j] += valueOfDistance[distance] - valueOfDistance[fieldMinDistance[i][j]];
+			fieldMinDistance[i][j] = distance;
+			const GridStaticType &s = fieldStatic[i][j];
+			for (Direction dir = up; dir < 4; ++dir) {
+				if (!(s & direction2OpposingWall[dir])) {
+					SetSmallFruitValue((i + dx[dir] + width) % width, (i + dy[dir] + height) % height, distance + 1);
+				}					
+			}
+		}
+
+		// 全局估值
+		void SetValue(int myID) {
+			memset(fieldValue, 0, sizeof(fieldContent));
+			for (int i = 0; i < FIELD_MAX_HEIGHT; ++i)
+				for (int j = 0; j < FIELD_MAX_WIDTH; ++j) {
+					if (fieldContent[i][j] & smallFruit) {
+						SetSmallFruitValue(i, j, 0);
+					}
+				}
+		}
 	};
 
 	bool GameField::constructed = false;
@@ -778,6 +819,156 @@ namespace Helpers
 	}
 }
 
+// Phycho-Melon AI
+// started at 2016-5-1
+
+#define MAX_SEARCH_DEPTH 2 // 定义最大搜索步数
+
+namespace PsychoMelon {
+
+	// 记录搜索前原力量
+	int myOriginStrength;
+
+	// 记录自己行动
+	// 记录估值最大的若干种行动
+	// RandomAct从中随机返回一个
+	struct MyBestAct {
+		int score;
+		int actCount;
+		Pacman::Direction act[5];
+		Pacman::Direction RandomAct() {// 从估值相同的行动中随机选择一个执行
+			return act[Helpers::RandBetween(0, actCount)];
+		}
+		MyBestAct():actCount(0){}
+	};
+
+	// 记录对手行动
+	// 调用构造函数时，直接记录在结构体中
+	struct RivalAct {
+		int rivalCount;
+		int rivalID[3];
+		int rivalActCount[3];
+		int totalActCount;
+		Pacman::Direction rivalAct[3][5];
+		Pacman::Direction GetAction(int _, int i) {// 0<=_<rivalCount ; 0<=i<totalActCount
+			switch (rivalCount) {
+			case 1:return rivalAct[_][i];
+			case 2:
+				switch (_) {
+				case 0:return rivalAct[_][i / rivalActCount[1]];
+				case 1:return rivalAct[_][i % rivalActCount[1]];
+				}
+			case 3:
+				switch (_) {
+				case 0:return rivalAct[_][i / rivalActCount[1] / rivalActCount[2]];
+				case 1:return rivalAct[_][i / rivalActCount[2] % rivalActCount[1]];
+				case 2:return rivalAct[_][i % rivalActCount[2]];
+				}
+			}
+		}
+		RivalAct(const Pacman::GameField &gameField, int myID) {// 构造函数
+																// 记录存活对手 rivalCount,rivalID
+			rivalCount = 0;
+			for (int _ = 0; _ < MAX_PLAYER_COUNT; ++_) {
+				if (_ == myID || gameField.players[_].dead)
+					continue;
+				rivalID[rivalCount++] = _;
+			}
+			// 记录所有存活对手可能行动rivalAct
+			// 所有可能情况数totalCount，最大为125(=5*5*5)
+			memset(rivalActCount, 0, sizeof(rivalActCount));
+			totalActCount = 1;
+			Pacman::Direction d;
+			for (int _ = 0; _ < rivalCount; ++_) {
+				for (d = Pacman::stay; d < 4; ++d) {
+					if (gameField.ActionValid(rivalID[_], d)) {
+						rivalAct[_][rivalActCount[_]++] = d;
+					}
+				}
+				totalActCount *= rivalActCount[_];
+			}
+		}
+	};
+
+	// 声明
+	MyBestAct MyPlay(Pacman::GameField &gameField, int myID,bool ScoreOnly=true);
+
+	int SearchCount = 0;// 记录已搜索深度
+
+	// 估值函数
+	inline int CalcValue(Pacman::GameField &gameField, int myID) {
+		bool hasNextTurn=gameField.NextTurn();
+
+		if (gameField.players[myID].dead)// 死亡则立即返回
+			return -1000;
+
+		if (SearchCount == MAX_SEARCH_DEPTH || !hasNextTurn) {			
+			gameField.SetValue(myID);
+			Pacman::Player &p = gameField.players[myID];
+			return gameField.fieldValue[p.row][p.col] + (p.strength - myOriginStrength)*gameField.valueOfDistance[0];
+		}
+		else
+			return MyPlay(gameField, myID).score;
+	}		
+		
+
+	// 自己决策
+	// 返回值为MyAct结构体
+	// ScoreOnly为true时只记录score，不记录act
+	MyBestAct MyPlay(Pacman::GameField &gameField, int myID,bool ScoreOnly) {
+		MyBestAct returnAct;// 用于返回的结构体
+		if(!ScoreOnly)
+			myOriginStrength = gameField.players[myID].strength;
+		int bestScore = 0;
+		int tmpScore = 0;
+
+		// 模拟对手决策
+		RivalAct rivalAct(gameField, myID);
+
+		Pacman::Direction myAct = Pacman::stay;
+		for (; myAct < 4; ++myAct) {			
+			if (gameField.ActionValid(myID, myAct)) {
+				int worstScore = 100000;			
+				for (int i = 0; i < rivalAct.totalActCount; ++i) {
+					gameField.actions[myID] = myAct;
+					for (int _ = 0; _ < rivalAct.rivalCount; ++_) {
+						gameField.actions[rivalAct.rivalID[_]] = rivalAct.GetAction(_, i);
+					}					
+					SearchCount++;
+					tmpScore = CalcValue(gameField, myID);
+					SearchCount--;
+					if (tmpScore < worstScore) {// MIN节点
+						worstScore = tmpScore;
+					}
+					gameField.PopState();
+					if (worstScore < bestScore)// alpha剪枝
+						break;					
+				}
+				if (ScoreOnly) {
+					if (worstScore > bestScore)
+						bestScore = worstScore;
+				}
+				else {
+					if (worstScore > bestScore) {// MAX节点
+						bestScore = worstScore;
+						returnAct.actCount = 0;
+						returnAct.act[returnAct.actCount++] = myAct;
+					}
+					else if (worstScore == bestScore) {
+						returnAct.act[returnAct.actCount++] = myAct;
+					}
+				}				
+			}
+		}
+		if (returnAct.actCount == 0) { // 局面惨到一步能走的都没有_(:зゝ∠)_
+			returnAct.actCount = 1;
+			returnAct.act[0] = Pacman::stay;
+		}
+		returnAct.score = bestScore;
+		return returnAct;
+	}
+}
+
 int main()
 {
 	Pacman::GameField gameField;
@@ -787,7 +978,8 @@ int main()
 							 // 如果在平台上，则不会去检查有无input.txt
 	int myID = gameField.ReadInput("input.txt", data, globalData); // 输入，并获得自己ID
 	srand(Pacman::seed + myID);
-
+	// 范例程序 start
+	/*
 	// 简单随机，看哪个动作随机赢得最多
 	for (int i = 0; i < 1000; i++)
 		Helpers::RandomPlay(gameField, myID);
@@ -805,5 +997,11 @@ int main()
 		gameField.WriteOutput((Pacman::Direction)(maxD - 1), "", data, globalData);
 	else
 		gameField.WriteOutput((Pacman::Direction)(maxD - 1), "Hello, cruel world", data, globalData);
+	*/
+	// 范例程序 end
+
+	//  ver0.1 by FrankZ
+	gameField.WriteOutput(PsychoMelon::MyPlay(gameField, myID,false).RandomAct(), "Tekeli-li! Tekeli-li!", data, globalData);
+
 	return 0;
 }
