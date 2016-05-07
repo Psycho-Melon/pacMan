@@ -824,6 +824,148 @@ namespace Helpers
 
 #define MAX_SEARCH_DEPTH 2 // 定义最大搜索步数
 
+
+//Data处理
+namespace Data
+{
+	using namespace Pacman;
+
+	/* 在第一回合时调用此函数，用于初始化数据
+       请在main中加入:
+       if(!gameField.turnID)
+           resetData(data,gameField);  */
+	void resetData(string &data,GameField &gameField)
+	{
+		int height = gameField.height;
+		int width = gameField.width;
+		int si = sizeof(int);
+		int size = (1 + 1 + height*width + height*width*height*width) * si;
+		data.resize(size, 0);
+
+		char *p;
+		p = const_cast<char*>(data.c_str());
+
+		memcpy_s(p, si, &height, si);
+		p += si;
+		memcpy_s(p, si, &width, si);
+		p -= si;
+
+	}
+
+	// 用于从data中获取route信息
+	void getRoute(string &data,char**** route)
+	{
+		int height;
+		int width;
+		char *p;
+		int si = sizeof(int);
+		p = const_cast<char*>(data.c_str());
+
+		memcpy_s(&height, si, p, si);
+		p += si;
+		memcpy_s(&width, si, p, si);
+		p -= si;
+
+		p += (1 + 1 + height*width) * si;
+
+		for (int i = 0; i < height; i++)
+		{
+			for (int j = 0; j < width; j++)
+			{
+				for (int k = 0; k < height; k++)
+				{
+					memcpy_s(route[i][j][k], si*width,p,si*width);
+					p += si*width;
+				}
+			}
+		}
+		
+	}
+
+	// 将route信息写入data中以保存
+	void setRoute(string &data, char**** route)
+	{
+		int height;
+		int width;
+		char *p;
+		int si = sizeof(int);
+		p = const_cast<char*>(data.c_str());
+
+		memcpy_s(&height, si, p, si);
+		p += si;
+		memcpy_s(&width, si, p, si);
+		p -= si;
+
+		p += (1 + 1 + height*width) * si;
+
+		for (int i = 0; i < height; i++)
+		{
+			for (int j = 0; j < width; j++)
+			{
+				for (int k = 0; k < height; k++)
+				{
+					memcpy_s(p, si*width, route[i][j][k], si*width);
+					p += si*width;
+				}
+			}
+		}
+
+	}
+
+	/* 用于存储DeadEnd信息
+	   请将DeadEnd信息存储在Height*Width的二位数组中
+	   参数1 data: 存储位置string data| 参数2 deadEnd: 存储计算好deadend信息的int**指针(对于没计算的点，无胡同的点，请自行选择参数，区别表示)
+	*/
+	void DeadEnd(string & data, const int ** deadEnd)
+	{
+		int height;
+		int width;
+		char *p;
+		int si = sizeof(int);
+		p = const_cast<char*>(data.c_str());
+
+		memcpy_s(&height, si, p, si);
+		p += si;
+		memcpy_s(&width, si, p, si);
+		p -= si;
+
+		p += (1 + 1) * si;
+
+		for (int i = 0; i < height; i++)
+		{
+			memcpy_s(p, si*width, deadEnd[i], si*width);
+			p += si*width;
+		}
+	}
+
+	/* 用于读取DeadEnd信息
+	   请将DeadEnd信息一次性读取到Height*Width的二位数组中
+	   参数1 data: 源位置string data| 参数2 deadEnd: 用于存储deadend信息的int**指针
+	*/
+	void DeadEnd(string & data, int ** deadEnd)
+	{
+		int height;
+		int width;
+		char *p;
+		int si = sizeof(int);
+		p = const_cast<char*>(data.c_str());
+
+		memcpy_s(&height, si, p, si);
+		p += si;
+		memcpy_s(&width, si, p, si);
+		p -= si;
+
+		p += (1 + 1) * si;
+
+		for (int i = 0; i < height; i++)
+		{
+			memcpy_s(deadEnd[i], si*width, p, si*width);
+			p += si*width;
+		}
+	}
+}
+
+
 namespace PsychoMelon {
 
 	// 记录搜索前原力量
