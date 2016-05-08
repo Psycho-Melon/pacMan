@@ -991,6 +991,7 @@ namespace Helpers
 namespace Data
 {
 	using namespace Pacman;
+	using std::memcpy;
 
 	/* 在第一回合时调用此函数，用于初始化数据
        请在main中加入:
@@ -1023,9 +1024,9 @@ namespace Data
 		int si = sizeof(int);
 		p = const_cast<char*>(data.c_str());
 
-		memcpy_s(&height, si, p, si);
+		memcpy(&height, p, si);
 		p += si;
-		memcpy_s(&width, si, p, si);
+		memcpy(&width, p, si);
 		p -= si;
 
 		p += (1 + 1 + height*width) * si;
@@ -1036,7 +1037,7 @@ namespace Data
 			{
 				for (int k = 0; k < height; k++)
 				{
-					memcpy_s(route[i][j][k], si*width,p,si*width);
+					memcpy(route[i][j][k],p,si*width);
 					p += si*width;
 				}
 			}
@@ -1053,9 +1054,9 @@ namespace Data
 		int si = sizeof(int);
 		p = const_cast<char*>(data.c_str());
 
-		memcpy_s(&height, si, p, si);
+		memcpy(&height, p, si);
 		p += si;
-		memcpy_s(&width, si, p, si);
+		memcpy(&width, p, si);
 		p -= si;
 
 		p += (1 + 1 + height*width) * si;
@@ -1066,7 +1067,7 @@ namespace Data
 			{
 				for (int k = 0; k < height; k++)
 				{
-					memcpy_s(p, si*width, route[i][j][k], si*width);
+					memcpy(p, route[i][j][k], si*width);
 					p += si*width;
 				}
 			}
