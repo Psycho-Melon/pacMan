@@ -1015,7 +1015,7 @@ namespace Data
 	}
 
 	// 用于从data中获取route信息
-	void getRoute(string &data,char**** route)
+	void getRoute(string &data,int**** route)
 	{
 		int height;
 		int width;
@@ -1045,7 +1045,7 @@ namespace Data
 	}
 
 	// 将route信息写入data中以保存
-	void setRoute(string &data, char**** route)
+	void setRoute(string &data, int**** route)
 	{
 		int height;
 		int width;
