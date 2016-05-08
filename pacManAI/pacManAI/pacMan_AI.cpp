@@ -707,13 +707,89 @@ namespace Pacman
 		// Phycho-Melon
 		// 用于估值的一些函数，作为gameField的成员函数使用更方便
 
+		// 返回行动后的位置
+		FieldProp PosAfterAction(int playerID, Direction &dir) {
+			FieldProp p = players[playerID];
+			p = { (p.row + dy[dir] + height) % height,(p.col + dx[dir] + width) % width };
+			return p;
+		}
+
+		// Distance
+#define MAX_DISTANCE 7 // 记录的最大距离
+		int disBetween[FIELD_MAX_HEIGHT][FIELD_MAX_WIDTH]
+			[FIELD_MAX_HEIGHT][FIELD_MAX_WIDTH]; // 两点间距离加一(便于判断是否计算过)
+
+		// 设置某点周围距离辐射
+		void SetDis(int (*p)[FIELD_MAX_WIDTH],int dis) {
+			for (int i = 0; i < height; i++)
+				for (int j = 0; j < width; j++) {
+					if (p[i][j] == dis) {
+						GridStaticType &s = fieldStatic[i][j];
+						for (Direction dir = up; dir < 4; ++dir) {
+							if (!(s&direction2OpposingWall[dir])) {
+								int &_p = p[(i + dy[dir] + height) % height][(j + dx[dir] + width) % width];
+								if (_p == 0 || _p > dis + 1)
+									_p = dis + 1;
+							}
+						}
+					}
+				}
+			if (dis + 1 >= MAX_DISTANCE)return;
+			SetDis(p, dis + 1);
+		}
+
+		// 记录距离
+		void RecordDisBetween(int row1, int col1, int row2, int col2, int dis) {
+			disBetween[row1][col1][row2][col2] = dis;
+			disBetween[row2][col2][row1][col1] = dis;
+			disBetween[height - row1][col1][height - row2][col2] = dis;
+			disBetween[height - row2][col2][height - row1][col1] = dis;
+			disBetween[row1][width - col1][row2][width - col2] = dis;
+			disBetween[row2][width - col2][row1][width - col1] = dis;
+			disBetween[height - row1][width - col1][height - row2][width - col2] = dis;
+			disBetween[height - row2][width - col2][height - row1][width - col1] = dis;
+		}
+
+		// 返回两点间距离，-1表示超出计算范围
+		int GetDisBetween(int row1, int col1, int row2, int col2) {
+			int(*p1)[FIELD_MAX_WIDTH] = disBetween[row1][col1];
+			int(*p2)[FIELD_MAX_WIDTH] = disBetween[row2][col2];
+			if (p1[row1][col1] == 0) { // 该点还未计算过
+				p1[row1][col1] = 1;
+				SetDis(p1, 1);
+			}
+			if (p2[row2][col2] == 0) {
+				p2[row2][col2] = 1;
+				SetDis(p2, 1);
+			}
+			// 两点间距离已记录过
+			if (p1[row2][col2] > 0)
+				return p1[row2][col2] - 1;
+			// 两点间距离未记录过
+			int minDis = 402;
+			for (int i = 0; i < height; i++)
+				for (int j = 0; j < width; j++) {
+					if (p1[i][j] && p2[i][j]) {
+						int tmp = p1[i][j] + p2[i][j];
+						if (tmp < minDis)
+							minDis = tmp;
+					}
+				}
+			if (minDis < 402) {
+				int tmp = minDis - 1;
+				RecordDisBetween(row1, col1, row2, col2, tmp);
+				return tmp - 1;
+			}
+			else
+				return -1; // 超出计算范围
+		}
 		
 		int fieldValue[FIELD_MAX_HEIGHT][FIELD_MAX_WIDTH]; // 记录每格估值
 
 		// 吃豆估值
 		int fieldMinDistance[FIELD_MAX_HEIGHT][FIELD_MAX_WIDTH]; // 记录当前估值豆子到该格的最短距离
 		const int maxDistance = 7;
-		const int valueOfDistance[8] = { 128,32,16,8,4,2,1,0 };
+		const int valueOfDistance[8] = { 34,13,8,5,3,2,1,0 };
 
 		inline void SetSmallFruitValue(int i, int j,int distance) {
 			if (distance == 0) { // 初始化估值记录，设置所有格到当前估值豆子的最短最短距离均为maxDistance
@@ -728,7 +804,7 @@ namespace Pacman
 			const GridStaticType &s = fieldStatic[i][j];
 			for (Direction dir = up; dir < 4; ++dir) {
 				if (!(s & direction2OpposingWall[dir])) {
-					SetSmallFruitValue((i + dx[dir] + width) % width, (i + dy[dir] + height) % height, distance + 1);
+					SetSmallFruitValue((i + dy[dir] + height) % height, (j + dx[dir] + width) % width, distance + 1);
 				}					
 			}
 		}
@@ -747,6 +823,8 @@ namespace Pacman
 
 	bool GameField::constructed = false;
 }
+
+
 
 // 一些辅助程序
 namespace Helpers
@@ -822,7 +900,7 @@ namespace Helpers
 // Phycho-Melon AI
 // started at 2016-5-1
 
-#define MAX_SEARCH_DEPTH 2 // 定义最大搜索步数
+#define MAX_SEARCH_DEPTH 1 // 定义最大搜索步数
 
 
 //Data处理
