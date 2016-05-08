@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <string>
 #include <cstring>
+#include <string.h>
 #include <stack>
 #include <stdexcept>
 #include "jsoncpp/json.h"
