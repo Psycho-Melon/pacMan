@@ -31,6 +31,8 @@ using std::runtime_error;
 using std::memcpy;
 
 string test = "test";
+int disBetween[FIELD_MAX_HEIGHT][FIELD_MAX_WIDTH]
+[FIELD_MAX_HEIGHT][FIELD_MAX_WIDTH]; // 两点间距离加一(便于判断是否计算过)
 
 // 平台提供的吃豆人相关逻辑处理程序
 namespace Pacman
@@ -799,9 +801,6 @@ namespace Value {
 	GridContentType fieldContent[FIELD_MAX_HEIGHT][FIELD_MAX_WIDTH];
 	GridStaticType fieldStatic[FIELD_MAX_HEIGHT][FIELD_MAX_WIDTH];
 
-	int disBetween[FIELD_MAX_HEIGHT][FIELD_MAX_WIDTH]
-		[FIELD_MAX_HEIGHT][FIELD_MAX_WIDTH]; // 两点间距离加一(便于判断是否计算过)
-
 											 // 每回合开始需要调用一次
 	void Initialate(GameField &gameField) {
 		height = gameField.height;
@@ -936,7 +935,6 @@ namespace Value {
 namespace Data
 {
 	using namespace Pacman;
-	using Value::disBetween;
 	void resetData(GameField &gameField, string & data, char *p)
 	{
 		int height = gameField.height;
@@ -956,16 +954,12 @@ namespace Data
 	}
 
 	// 用于从data中获取disBetween信息
-	void getRoute(char *p)
+	void getRoute(GameField &g, char *p)
 	{
-		int height;
-		int width;
+		int height = g.height;
+		int width = g.width;
 		int si = sizeof(int);
 
-		memcpy(p, &height, si);
-		p += si;
-		memcpy(p, &width, si);
-		p -= si;
 		int size = (1 + 1 + height*width + height*width*height*width) * si;
 
 		memcpy(&height, p, si);
@@ -997,10 +991,10 @@ namespace Data
 	}
 
 	// 将disBetween信息写入data中以保存
-	void setRoute(char * p)
+	void setRoute(GameField &g, char * p)
 	{
-		int height;
-		int width;
+		int height = g.height;
+		int width = g.width;
 		int si = sizeof(int);
 
 		memcpy(p, &height, si);
@@ -1253,7 +1247,7 @@ int main()
 	if (p)
 	{
 		test += " get";
-		Data::getRoute(p);
+		Data::getRoute(gameField, p);
 	}
 
 	Pacman::Direction myAct = PsychoMelon::MyPlay(gameField, myID, false).RandomAct();
@@ -1261,7 +1255,7 @@ int main()
 	if (p)
 	{
 		test += " set";
-		Data::setRoute(p);
+		Data::setRoute(gameField, p);
 	}
 
 	if (p)
