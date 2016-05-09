@@ -929,6 +929,108 @@ namespace Value {
 	}
 	}
 	*/
+	//记录死胡同——————————————————————————————————————————————
+	
+int save_steps[FIELD_MAX_HEIGHT][FIELD_MAX_WIDTH];//最终得到的记录
+	
+	void find_dead_end(Pacman::GameField gameField)
+    {
+	    int save_dead_ends[FIELD_MAX_HEIGHT][FIELD_MAX_WIDTH];//标记胡同及入口
+		int tmp_fieldStatic[FIELD_MAX_HEIGHT][FIELD_MAX_WIDTH];//记录地图信息并做标记
+		
+		for( int i = 0; i < FIELD_MAX_HEIGHT; i++)
+		{
+			for( int j =0; j < FIELD_MAX_WIDTH; j++)
+			{
+				tmp_fieldStatic[i][j] = gameField.fieldStatic[i][j];
+				 save_dead_ends[i][j] = 0;
+				 save_steps[i][j] = 0;
+			}
+		}//初始化
+        
+		int flag = 1,counter = 0;
+		while( flag == 1)
+		{
+		    flag = 0;
+			for ( int i = 0; i < (FIELD_MAX_HEIGHT/2 + FIELD_MAX_HEIGHT%2); i++)
+            {
+				for ( int j = 0 ; j < (FIELD_MAX_WIDTH/2 +FIELD_MAX_WIDTH%2); j++)
+				{
+					counter = 0;
+					if(tmp_fieldStatic[i][j] & 1)counter++;
+					if( tmp_fieldStatic[i][j] & 2) counter++;
+					if( tmp_fieldStatic[i][j] & 4) counter++;
+					if( tmp_fieldStatic[i][j] & 8) counter++;
+					if( counter == 3)
+					{
+						flag = 1;
+						int lost_wall = 15 - tmp_fieldStatic[i][j];
+						save_dead_ends[i][j] = 1;
+						tmp_fieldStatic[i][j] = 15;
+						if( lost_wall == 1) {
+							save_dead_ends[i-1][j] = save_dead_ends[i][j] -2;
+                            tmp_fieldStatic[i-1][j] += 4;
+						}
+						else if( lost_wall == 2) {
+							save_dead_ends[i][j+1] = save_dead_ends[i][j] -2;
+                            tmp_fieldStatic[i][j+1] += 8;
+						}
+						else if( lost_wall == 4) {
+							save_dead_ends[i+1][j] = save_dead_ends[i][j] -2;
+							tmp_fieldStatic[i+1][j] += 1;
+						}
+						else if( lost_wall == 8) {
+							save_dead_ends[i][j-1] = save_dead_ends[i][j] -2;
+							tmp_fieldStatic[i][j-1] += 2;
+						}
+					}
+				}
+            }
+		}//第一次，找出胡同并做标记，记录在save_steps上
+		
+		counter = 1;flag = 1;
+		while( flag)
+        {
+            flag = 0;
+		for ( int i = 0; i < (FIELD_MAX_HEIGHT/2 + FIELD_MAX_HEIGHT%2); i++)
+            {
+				for ( int j = 0 ; j < (FIELD_MAX_WIDTH/2 +FIELD_MAX_WIDTH%2); j++)
+				{
+				    if( save_dead_ends[i][j] == -1)
+                    {
+                        if( i > 0 && save_dead_ends[i-1][j] == 1) {save_steps[i-1][j] = counter;save_dead_ends[i-1][j] = -2;flag = 1;}
+                        if(i < FIELD_MAX_HEIGHT - 1 && save_dead_ends[i+1][j] == 1 ){save_steps[i+1][j] = counter; save_dead_ends[i+1][j] = -2;flag = 1;}
+                        if(j > 0 && save_dead_ends[i][j-1] == 1) {save_steps[i][j-1] = counter;save_dead_ends[i][j-1] = -2;flag = 1;}
+                        if(j < FIELD_MAX_HEIGHT - 1 && save_dead_ends[i][j+1] == 1 ){save_steps[i][j+1] = counter; save_dead_ends[i][j+1] = -2;flag = 1;}
+                        save_dead_ends[i][j] = 0;
+
+                    }
+				}
+            }
+            for ( int i = 0; i < (FIELD_MAX_HEIGHT/2 + FIELD_MAX_HEIGHT%2); i++)
+				for ( int j = 0 ; j < (FIELD_MAX_WIDTH/2 +FIELD_MAX_WIDTH%2); j++)
+                    if( save_dead_ends[i][j] == -2)save_dead_ends[i][j]++;
+            counter++;
+        }//第二次，为胡同标记步数，记录在save_steps上；
+        for( int i = 0; i < (FIELD_MAX_HEIGHT/2 + FIELD_MAX_HEIGHT%2); i++)
+        {
+            for( int j = (FIELD_MAX_WIDTH/2 +FIELD_MAX_WIDTH%2); j < FIELD_MAX_WIDTH; j++)
+            {
+                save_steps[i][j] = save_steps[i][FIELD_MAX_WIDTH -j-1];
+            }
+        }
+        for( int i = (FIELD_MAX_HEIGHT/2 + FIELD_MAX_HEIGHT%2); i < FIELD_MAX_HEIGHT; i++)
+        {
+            for( int j = 0; j < FIELD_MAX_WIDTH; j++)
+            {
+                save_steps[i][j] = save_steps[FIELD_MAX_WIDTH-i-1][j];
+            }
+        }//做镜面复制，从四分之一扩展成全部地图
+		
+		/*save_steps中数据：
+		0 ：非胡同
+		n ：胡同里n步深度（n>0)*/
+	}//——————————————————————————————————————————————————————————————
 }
 
 //Data处理
@@ -1235,6 +1337,7 @@ int main()
 	string data, globalData; // 这是回合之间可以传递的信息
 							 // 如果在本地调试，有input.txt则会读取文件内容作为输入
 							 // 如果在平台上，则不会去检查有无input.txt
+
 	int myID = gameField.ReadInput("input.txt", data, globalData); // 输入，并获得自己ID
 	int n = clock();
 	Value::Initialate(gameField);
