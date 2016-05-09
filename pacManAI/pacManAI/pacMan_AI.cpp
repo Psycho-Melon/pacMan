@@ -788,14 +788,10 @@ namespace Helpers
 
 namespace Value {
 	using namespace Pacman;
-	// Distance
 
 	int height, width;
 	GridContentType fieldContent[FIELD_MAX_HEIGHT][FIELD_MAX_WIDTH];
-	GridStaticType fieldStatic[FIELD_MAX_HEIGHT][FIELD_MAX_WIDTH];
-
-	int disBetween[FIELD_MAX_HEIGHT][FIELD_MAX_WIDTH]
-		[FIELD_MAX_HEIGHT][FIELD_MAX_WIDTH]; // 两点间距离加一(便于判断是否计算过)
+	GridStaticType fieldStatic[FIELD_MAX_HEIGHT][FIELD_MAX_WIDTH];	
 
 	// 每回合开始需要调用一次
 	void Initialate(GameField &gameField) {
@@ -823,6 +819,9 @@ namespace Value {
 		SetDis(p, dis + 1);
 	}
 
+	// Distance
+	int disBetween[FIELD_MAX_HEIGHT][FIELD_MAX_WIDTH]
+		[FIELD_MAX_HEIGHT][FIELD_MAX_WIDTH]; // 两点间距离加一(便于判断是否计算过)
 	// 记录距离
 	void RecordDisBetween(int row1, int col1, int row2, int col2, int dis) {
 		disBetween[row1][col1][row2][col2] = dis;
