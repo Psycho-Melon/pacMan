@@ -1222,12 +1222,11 @@ int main()
 							 // 如果在本地调试，有input.txt则会读取文件内容作为输入
 							 // 如果在平台上，则不会去检查有无input.txt
 	int myID = gameField.ReadInput("input.txt", data, globalData); // 输入，并获得自己ID
+	memset(Value::disBetween, 0, sizeof(Value::disBetween));
 	if (gameField.turnID == 0) {
 		Data::resetData(data, gameField);
 	}
-	else {
-		Data::getRoute(data, (int****)Value::disBetween);
-	}
+	Data::getRoute(data);
 	Value::Initialate(gameField);
 	srand(Pacman::seed + myID);
 	// 范例程序 start
@@ -1253,7 +1252,7 @@ int main()
 	// 范例程序 end
 
 	Pacman::Direction myAct = PsychoMelon::MyPlay(gameField, myID, false).RandomAct();
-	Data::setRoute(data, (int****)Value::disBetween);
+	Data::setRoute(data);
 	gameField.WriteOutput(myAct, "Tekeli-li! Tekeli-li!", data, globalData);
 	return 0;
 }
