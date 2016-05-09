@@ -31,8 +31,8 @@ using std::runtime_error;
 using std::memcpy;
 
 string test = "test";
-int disBetween[FIELD_MAX_HEIGHT][FIELD_MAX_WIDTH]
-[FIELD_MAX_HEIGHT][FIELD_MAX_WIDTH]; // 两点间距离加一(便于判断是否计算过)
+char disBetween[FIELD_MAX_HEIGHT][FIELD_MAX_WIDTH]
+[FIELD_MAX_HEIGHT][FIELD_MAX_WIDTH]; // 两点间距离加二(便于判断是否计算过)
 
 // 平台提供的吃豆人相关逻辑处理程序
 namespace Pacman
@@ -807,17 +807,19 @@ namespace Value {
 		width = gameField.width;
 		memcpy(fieldContent, gameField.fieldContent, sizeof(gameField.fieldContent));
 		memcpy(fieldStatic, gameField.fieldStatic, sizeof(gameField.fieldStatic));
+//		if (gameField.turnID == 0)
+			memset(disBetween, 1, sizeof(disBetween));
 	}
 	// 设置某点周围距离辐射
-	void SetDis(int(*p)[FIELD_MAX_WIDTH], int dis) {
+	void SetDis(char(*p)[FIELD_MAX_WIDTH], char dis) {
 		for (int i = 0; i < height; i++)
 			for (int j = 0; j < width; j++) {
 				if (p[i][j] == dis) {
 					GridStaticType &s = fieldStatic[i][j];
 					for (Direction dir = up; dir < 4; ++dir) {
 						if (!(s&direction2OpposingWall[dir])) {
-							int &_p = p[(i + dy[dir] + height) % height][(j + dx[dir] + width) % width];
-							if (_p == 0 || _p > dis + 1)
+							char &_p = p[(i + dy[dir] + height) % height][(j + dx[dir] + width) % width];
+							if (_p == 1 || _p > dis + 1)
 								_p = dis + 1;
 						}
 					}
@@ -841,23 +843,23 @@ namespace Value {
 
 	// 返回两点间距离，-1表示超出计算范围
 	int GetDisBetween(int row1, int col1, int row2, int col2) {
-		int(*p1)[FIELD_MAX_WIDTH] = disBetween[row1][col1];
-		int(*p2)[FIELD_MAX_WIDTH] = disBetween[row2][col2];
-		if (p1[row1][col1] == 0) { // 该点还未计算过
-			p1[row1][col1] = 1;
-			SetDis(p1, 1);
+		char(*p1)[FIELD_MAX_WIDTH] = disBetween[row1][col1];
+		char(*p2)[FIELD_MAX_WIDTH] = disBetween[row2][col2];
+		if (p1[row1][col1] == 1) { // 该点还未计算过
+			p1[row1][col1] = 2;
+			SetDis(p1, 2);
 		}
 
-		if (p2[row2][col2] == 0) {
-			p2[row2][col2] = 1;
-			SetDis(p2, 1);
+		if (p2[row2][col2] == 1) {
+			p2[row2][col2] = 2;
+			SetDis(p2, 2);
 		}
 
 		// 两点间距离已记录过
-		if (p1[row2][col2] > 0)
-			return p1[row2][col2] - 1;
+		if (p1[row2][col2] > 1)
+			return p1[row2][col2] - 2;
 		// 两点间距离未记录过
-		int minDis = 402;
+		int minDis = 201;
 		for (int i = 0; i < height; i++)
 			for (int j = 0; j < width; j++) {
 				if (p1[i][j] && p2[i][j]) {
@@ -866,10 +868,10 @@ namespace Value {
 						minDis = tmp;
 				}
 			}
-		if (minDis < 402) {
-			int tmp = minDis - 1;
+		if (minDis < 201) {
+			int tmp = minDis - 2;
 			RecordDisBetween(row1, col1, row2, col2, tmp);
-			return tmp - 1;
+			return tmp - 2;
 		}
 		else
 			return -1; // 超出计算范围
