@@ -929,7 +929,7 @@ namespace Value {
 namespace Data
 {
 	using namespace Pacman;
-
+	using Value::disBetween;
 	/* 在第一回合时调用此函数，用于初始化数据
        请在main中加入:
        if(!gameField.turnID)
@@ -952,8 +952,8 @@ namespace Data
 
 	}
 
-	// 用于从data中获取route信息
-	void getRoute(string &data,int**** route)
+	// 用于从data中获取disBetween信息
+	void getRoute(string &data)
 	{
 		int height;
 		int width;
@@ -974,7 +974,7 @@ namespace Data
 			{
 				for (int k = 0; k < height; k++)
 				{
-					memcpy(route[i][j][k],p,si*width);
+					memcpy(disBetween[i][j][k],p,si*width);
 					p += si*width;
 				}
 			}
@@ -982,8 +982,8 @@ namespace Data
 		
 	}
 
-	// 将route信息写入data中以保存
-	void setRoute(string &data, int**** route)
+	// 将disBetween信息写入data中以保存
+	void setRoute(string &data)
 	{
 		int height;
 		int width;
@@ -1004,7 +1004,7 @@ namespace Data
 			{
 				for (int k = 0; k < height; k++)
 				{
-					memcpy(p, route[i][j][k], si*width);
+					memcpy(p, disBetween[i][j][k], si*width);
 					p += si*width;
 				}
 			}
