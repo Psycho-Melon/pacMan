@@ -516,7 +516,7 @@ namespace Pacman
 #else
 			if (localFileName)
 			{
-				std::ifstream fin(localFileName);
+				std::ifstream fin(localFileName,std::ios::binary);
 				if (fin)
 					while (getline(fin, chunk) && chunk != "")
 						str += chunk;
