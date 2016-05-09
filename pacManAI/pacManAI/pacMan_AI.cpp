@@ -8,13 +8,17 @@
 #include <cstring>
 #include <stack>
 #include <stdexcept>
+#include <string.h>
 #include "jsoncpp/json.h"
+#include <time.h>
+#include <stdio.h>
 
 #define FIELD_MAX_HEIGHT 20
 #define FIELD_MAX_WIDTH 20
 #define MAX_GENERATOR_COUNT 4 // 每个象限1
 #define MAX_PLAYER_COUNT 4
 #define MAX_TURN 100
+
 
 // 你也可以选用 using namespace std; 但是会污染命名空间
 using std::string;
@@ -24,6 +28,9 @@ using std::cout;
 using std::endl;
 using std::getline;
 using std::runtime_error;
+using std::memcpy;
+
+string test = "test";
 
 // 平台提供的吃豆人相关逻辑处理程序
 namespace Pacman
@@ -778,32 +785,500 @@ namespace Helpers
 	}
 }
 
+// Phycho-Melon AI
+// started at 2016-5-1
+
+#define MAX_SEARCH_DEPTH 1 // 定义最大搜索步数
+#define MAX_DISTANCE 20 // 记录的最大距离
+
+namespace Value {
+	using namespace Pacman;
+	// Distance
+
+	int height, width;
+	GridContentType fieldContent[FIELD_MAX_HEIGHT][FIELD_MAX_WIDTH];
+	GridStaticType fieldStatic[FIELD_MAX_HEIGHT][FIELD_MAX_WIDTH];
+
+	int disBetween[FIELD_MAX_HEIGHT][FIELD_MAX_WIDTH]
+		[FIELD_MAX_HEIGHT][FIELD_MAX_WIDTH]; // 两点间距离加一(便于判断是否计算过)
+
+											 // 每回合开始需要调用一次
+	void Initialate(GameField &gameField) {
+		height = gameField.height;
+		width = gameField.width;
+		memcpy(fieldContent, gameField.fieldContent, sizeof(gameField.fieldContent));
+		memcpy(fieldStatic, gameField.fieldStatic, sizeof(gameField.fieldStatic));
+	}
+	// 设置某点周围距离辐射
+	void SetDis(int(*p)[FIELD_MAX_WIDTH], int dis) {
+		for (int i = 0; i < height; i++)
+			for (int j = 0; j < width; j++) {
+				if (p[i][j] == dis) {
+					GridStaticType &s = fieldStatic[i][j];
+					for (Direction dir = up; dir < 4; ++dir) {
+						if (!(s&direction2OpposingWall[dir])) {
+							int &_p = p[(i + dy[dir] + height) % height][(j + dx[dir] + width) % width];
+							if (_p == 0 || _p > dis + 1)
+								_p = dis + 1;
+						}
+					}
+				}
+			}
+		if (dis + 1 >= MAX_DISTANCE)return;
+		SetDis(p, dis + 1);
+	}
+
+	// 记录距离
+	void RecordDisBetween(int row1, int col1, int row2, int col2, int dis) {
+		disBetween[row1][col1][row2][col2] = dis;
+		disBetween[row2][col2][row1][col1] = dis;
+		disBetween[height - row1][col1][height - row2][col2] = dis;
+		disBetween[height - row2][col2][height - row1][col1] = dis;
+		disBetween[row1][width - col1][row2][width - col2] = dis;
+		disBetween[row2][width - col2][row1][width - col1] = dis;
+		disBetween[height - row1][width - col1][height - row2][width - col2] = dis;
+		disBetween[height - row2][width - col2][height - row1][width - col1] = dis;
+	}
+
+	// 返回两点间距离，-1表示超出计算范围
+	int GetDisBetween(int row1, int col1, int row2, int col2) {
+		int(*p1)[FIELD_MAX_WIDTH] = disBetween[row1][col1];
+		int(*p2)[FIELD_MAX_WIDTH] = disBetween[row2][col2];
+		if (p1[row1][col1] == 0) { // 该点还未计算过
+			p1[row1][col1] = 1;
+			SetDis(p1, 1);
+		}
+
+		if (p2[row2][col2] == 0) {
+			p2[row2][col2] = 1;
+			SetDis(p2, 1);
+		}
+
+		// 两点间距离已记录过
+		if (p1[row2][col2] > 0)
+			return p1[row2][col2] - 1;
+		// 两点间距离未记录过
+		int minDis = 402;
+		for (int i = 0; i < height; i++)
+			for (int j = 0; j < width; j++) {
+				if (p1[i][j] && p2[i][j]) {
+					int tmp = p1[i][j] + p2[i][j];
+					if (tmp < minDis)
+						minDis = tmp;
+				}
+			}
+		if (minDis < 402) {
+			int tmp = minDis - 1;
+			RecordDisBetween(row1, col1, row2, col2, tmp);
+			return tmp - 1;
+		}
+		else
+			return -1; // 超出计算范围
+	}
+
+	const int valueOfDistance[20] = { 34,21,13,8,5,3,2,1,0 };
+
+	int GetValue(GameField &gameField, int myID) {
+		int value = 0;
+		Player &p = gameField.players[myID];
+		for (int i = 0; i < height; ++i) {
+			for (int j = 0; j < width; ++j) {
+				if (fieldContent[i][j] & smallFruit) {
+					int dis = GetDisBetween(p.row, p.col, i, j);
+					if (dis >= 0)
+						value += valueOfDistance[dis];
+				}
+			}
+		}
+		return value;
+	}
+	// 初版吃豆估值
+	/*
+	int fieldValue[FIELD_MAX_HEIGHT][FIELD_MAX_WIDTH]; // 记录每格估值
+
+	// 吃豆估值
+	int fieldMinDistance[FIELD_MAX_HEIGHT][FIELD_MAX_WIDTH]; // 记录当前估值豆子到该格的最短距离
+	const int maxDistance = 7;
+	//	const int valueOfDistance[8] = { 34,13,8,5,3,2,1,0 };
+
+	inline void SetSmallFruitValue(int i, int j, int distance) {
+	if (distance == 0) { // 初始化估值记录，设置所有格到当前估值豆子的最短最短距离均为maxDistance
+	for (int _i = 0; _i < FIELD_MAX_HEIGHT; ++_i)
+	for (int _j = 0; _j < FIELD_MAX_WIDTH; ++_j)
+	fieldMinDistance[_i][_j] = maxDistance;
+	}
+	if (distance >= fieldMinDistance[i][j]) // 不是最短距离或达到最大距离
+	return;
+	fieldValue[i][j] += valueOfDistance[distance] - valueOfDistance[fieldMinDistance[i][j]];
+	fieldMinDistance[i][j] = distance;
+	const GridStaticType &s = fieldStatic[i][j];
+	for (Direction dir = up; dir < 4; ++dir) {
+	if (!(s & direction2OpposingWall[dir])) {
+	SetSmallFruitValue((i + dy[dir] + height) % height, (j + dx[dir] + width) % width, distance + 1);
+	}
+	}
+	}
+
+	// 全局估值
+	void SetValue(int myID) {
+	memset(fieldValue, 0, sizeof(fieldContent));
+	for (int i = 0; i < FIELD_MAX_HEIGHT; ++i)
+	for (int j = 0; j < FIELD_MAX_WIDTH; ++j) {
+	if (fieldContent[i][j] & smallFruit) {
+	SetSmallFruitValue(i, j, 0);
+	}
+	}
+	}
+	*/
+}
+
+//Data处理
+namespace Data
+{
+	using namespace Pacman;
+	using Value::disBetween;
+	void resetData(GameField &gameField, string & data, char *p)
+	{
+		int height = gameField.height;
+		int width = gameField.width;
+		int si = sizeof(int);
+		int size = (1 + 1 + height*width + height*width*height*width) * si;
+
+		memset(p, 0, size);
+		memcpy(p, &height, si);
+		p += si;
+		memcpy(p, &width, si);
+		p -= si;
+		if (gameField.turnID)
+		{
+			memcpy(p, data.c_str(), size);
+		}
+	}
+
+	// 用于从data中获取disBetween信息
+	void getRoute(char *p)
+	{
+		int height;
+		int width;
+		int si = sizeof(int);
+
+		memcpy(p, &height, si);
+		p += si;
+		memcpy(p, &width, si);
+		p -= si;
+		int size = (1 + 1 + height*width + height*width*height*width) * si;
+
+		memcpy(&height, p, si);
+		p += si;
+		memcpy(&width, p, si);
+		p -= si;
+
+		p += (1 + 1 + height*width) * si;
+
+		for (int i = 0; i < height; i++)
+		{
+			for (int j = 0; j < width; j++)
+			{
+				for (int k = 0; k < height; k++)
+				{
+					memcpy(disBetween[i][j][k], p, si*width);
+					p += si*width;
+					for (int _k = 0; _k < width; _k++)
+					{
+						if (disBetween[i][j][k][_k])
+						{
+							test = "good";
+						}
+					}
+				}
+			}
+		}
+		p -= size;
+	}
+
+	// 将disBetween信息写入data中以保存
+	void setRoute(char * p)
+	{
+		int height;
+		int width;
+		int si = sizeof(int);
+
+		memcpy(p, &height, si);
+		p += si;
+		memcpy(p, &width, si);
+		p -= si;
+		int size = (1 + 1 + height*width + height*width*height*width) * si;
+
+		p += (1 + 1 + height*width) * si;
+
+		for (int i = 0; i < height; i++)
+		{
+			for (int j = 0; j < width; j++)
+			{
+				for (int k = 0; k < height; k++)
+				{
+					memcpy(p, disBetween[i][j][k], si*width);
+					p += si*width;
+					for (int _k = 0; _k < width; _k++)
+					{
+						if (disBetween[i][j][k][_k])
+						{
+							test = "bad";
+						}
+					}
+				}
+			}
+		}
+		p -= size;
+	}
+
+	/* 用于存储DeadEnd信息
+	请将DeadEnd信息存储在Height*Width的二位数组中
+	参数1 data: 存储位置string data| 参数2 deadEnd: 存储计算好deadend信息的int**指针(对于没计算的点，无胡同的点，请自行选择参数，区别表示)
+	*/
+	void DeadEnd(string & data, const int ** deadEnd)
+	{
+		int height;
+		int width;
+		char *p;
+		int si = sizeof(int);
+		p = const_cast<char*>(data.c_str());
+
+		memcpy(&height, p, si);
+		p += si;
+		memcpy(&width, p, si);
+		p -= si;
+
+		p += (1 + 1) * si;
+
+		for (int i = 0; i < height; i++)
+		{
+			memcpy(p, deadEnd[i], si*width);
+			p += si*width;
+		}
+	}
+
+	/* 用于读取DeadEnd信息
+	请将DeadEnd信息一次性读取到Height*Width的二位数组中
+	参数1 data: 源位置string data| 参数2 deadEnd: 用于存储deadend信息的int**指针
+	*/
+	void DeadEnd(string & data, int ** deadEnd)
+	{
+		int height;
+		int width;
+		char *p;
+		int si = sizeof(int);
+		p = const_cast<char*>(data.c_str());
+
+		memcpy(&height, p, si);
+		p += si;
+		memcpy(&width, p, si);
+		p -= si;
+
+		p += (1 + 1) * si;
+
+		for (int i = 0; i < height; i++)
+		{
+			memcpy(deadEnd[i], p, si*width);
+			p += si*width;
+		}
+	}
+}
+
+
+namespace PsychoMelon {
+
+	// 记录搜索前原力量
+	int myOriginStrength;
+
+	// 记录自己行动
+	// 记录估值最大的若干种行动
+	// RandomAct从中随机返回一个
+	struct MyBestAct {
+		int score;
+		int actCount;
+		Pacman::Direction act[5];
+		Pacman::Direction RandomAct() {// 从估值相同的行动中随机选择一个执行
+			return act[Helpers::RandBetween(0, actCount)];
+		}
+		MyBestAct() :actCount(0) {}
+	};
+
+	// 记录对手行动
+	// 调用构造函数时，直接记录在结构体中
+	struct RivalAct {
+		int rivalCount;
+		int rivalID[3];
+		int rivalActCount[3];
+		int totalActCount;
+		Pacman::Direction rivalAct[3][5];
+		Pacman::Direction GetAction(int _, int i) {// 0<=_<rivalCount ; 0<=i<totalActCount
+			switch (rivalCount) {
+			case 1:return rivalAct[_][i];
+			case 2:
+				switch (_) {
+				case 0:return rivalAct[_][i / rivalActCount[1]];
+				case 1:return rivalAct[_][i % rivalActCount[1]];
+				}
+			case 3:
+				switch (_) {
+				case 0:return rivalAct[_][i / rivalActCount[1] / rivalActCount[2]];
+				case 1:return rivalAct[_][i / rivalActCount[2] % rivalActCount[1]];
+				case 2:return rivalAct[_][i % rivalActCount[2]];
+				}
+			}
+		}
+		RivalAct(const Pacman::GameField &gameField, int myID) {// 构造函数
+																// 记录存活对手 rivalCount,rivalID
+			rivalCount = 0;
+			for (int _ = 0; _ < MAX_PLAYER_COUNT; ++_) {
+				if (_ == myID || gameField.players[_].dead)
+					continue;
+				rivalID[rivalCount++] = _;
+			}
+			// 记录所有存活对手可能行动rivalAct
+			// 所有可能情况数totalCount，最大为125(=5*5*5)
+			memset(rivalActCount, 0, sizeof(rivalActCount));
+			totalActCount = 1;
+			Pacman::Direction d;
+			for (int _ = 0; _ < rivalCount; ++_) {
+				for (d = Pacman::stay; d < 4; ++d) {
+					if (gameField.ActionValid(rivalID[_], d)) {
+						rivalAct[_][rivalActCount[_]++] = d;
+					}
+				}
+				totalActCount *= rivalActCount[_];
+			}
+		}
+	};
+
+	// 声明
+	MyBestAct MyPlay(Pacman::GameField &gameField, int myID, bool ScoreOnly = true);
+
+	int SearchCount = 0;// 记录已搜索深度
+
+						// 估值函数
+	inline int CalcValue(Pacman::GameField &gameField, int myID) {
+		bool hasNextTurn = gameField.NextTurn();
+
+		if (gameField.players[myID].dead)// 死亡则立即返回
+			return -1000;
+
+		if (SearchCount == MAX_SEARCH_DEPTH || !hasNextTurn) {
+			return Value::GetValue(gameField, myID);
+			// 初版估值
+			/*
+			Value::SetValue(myID);
+			Pacman::Player &p = gameField.players[myID];
+			return Value::fieldValue[p.row][p.col] + (p.strength - myOriginStrength)*Value::valueOfDistance[0];
+			*/
+		}
+		else
+			return MyPlay(gameField, myID).score;
+	}
+
+
+	// 自己决策
+	// 返回值为MyAct结构体
+	// ScoreOnly为true时只记录score，不记录act
+	MyBestAct MyPlay(Pacman::GameField &gameField, int myID, bool ScoreOnly) {
+		MyBestAct returnAct;// 用于返回的结构体
+		if (!ScoreOnly)
+			myOriginStrength = gameField.players[myID].strength;
+		int bestScore = 0;
+		int tmpScore = 0;
+
+		// 模拟对手决策
+		RivalAct rivalAct(gameField, myID);
+
+		Pacman::Direction myAct = Pacman::stay;
+		for (; myAct < 4; ++myAct) {
+			if (gameField.ActionValid(myID, myAct)) {
+				int worstScore = 100000;
+				for (int i = 0; i < rivalAct.totalActCount; ++i) {
+					gameField.actions[myID] = myAct;
+					for (int _ = 0; _ < rivalAct.rivalCount; ++_) {
+						gameField.actions[rivalAct.rivalID[_]] = rivalAct.GetAction(_, i);
+					}
+					SearchCount++;
+					tmpScore = CalcValue(gameField, myID);
+					SearchCount--;
+					if (tmpScore < worstScore) {// MIN节点
+						worstScore = tmpScore;
+					}
+					gameField.PopState();
+					if (worstScore < bestScore)// alpha剪枝
+						break;
+				}
+				if (ScoreOnly) {
+					if (worstScore > bestScore)
+						bestScore = worstScore;
+				}
+				else {
+					if (worstScore > bestScore) {// MAX节点
+						bestScore = worstScore;
+						returnAct.actCount = 0;
+						returnAct.act[returnAct.actCount++] = myAct;
+					}
+					else if (worstScore == bestScore) {
+						returnAct.act[returnAct.actCount++] = myAct;
+					}
+				}
+			}
+		}
+		if (returnAct.actCount == 0) { // 局面惨到一步能走的都没有_(:зゝ∠)_
+			returnAct.actCount = 1;
+			returnAct.act[0] = Pacman::stay;
+		}
+		returnAct.score = bestScore;
+		return returnAct;
+	}
+}
+
 int main()
 {
 	Pacman::GameField gameField;
 	string data, globalData; // 这是回合之间可以传递的信息
-
 							 // 如果在本地调试，有input.txt则会读取文件内容作为输入
 							 // 如果在平台上，则不会去检查有无input.txt
 	int myID = gameField.ReadInput("input.txt", data, globalData); // 输入，并获得自己ID
+	int n = clock();
+	Value::Initialate(gameField);
 	srand(Pacman::seed + myID);
 
-	// 简单随机，看哪个动作随机赢得最多
-	for (int i = 0; i < 1000; i++)
-		Helpers::RandomPlay(gameField, myID);
+	char *p = NULL;
+	int size = (1 + 1 + gameField.height*gameField.width + gameField.height*gameField.width*gameField.height*gameField.width) * sizeof(int);
+	p = new char[size];
+	Data::resetData(gameField, globalData, p);
+	if (p)
+	{
+		test += " get";
+		Data::getRoute(p);
+	}
 
-	int maxD = 0, d;
-	for (d = 0; d < 5; d++)
-		if (Helpers::actionScore[d] > Helpers::actionScore[maxD])
-			maxD = d;
+	Pacman::Direction myAct = PsychoMelon::MyPlay(gameField, myID, false).RandomAct();
 
-	// 输出当前游戏局面状态以供本地调试。注意提交到平台上会自动优化掉，不必担心。
-	gameField.DebugPrint();
+	if (p)
+	{
+		test += " set";
+		Data::setRoute(p);
+	}
 
-	// 随机决定是否叫嚣
-	if (rand() % 6)
-		gameField.WriteOutput((Pacman::Direction)(maxD - 1), "", data, globalData);
-	else
-		gameField.WriteOutput((Pacman::Direction)(maxD - 1), "Hello, cruel world", data, globalData);
+	if (p)
+	{
+		test += " gD";
+		globalData = p;
+	}
+
+	if (p)
+		delete[] p;
+
+	char a[10];
+
+	sprintf(a, "%d", (clock() - n));
+	test += " ";
+	test += a;
+
+	gameField.WriteOutput(myAct, test, data, globalData);
 	return 0;
 }
