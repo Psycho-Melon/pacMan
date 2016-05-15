@@ -13,12 +13,13 @@
 #include <time.h>
 #include <stdio.h>
 
+#define CHAR_START 65
 #define FIELD_MAX_HEIGHT 20
 #define FIELD_MAX_WIDTH 20
 #define MAX_GENERATOR_COUNT 4 // 每个象限1
 #define MAX_PLAYER_COUNT 4
 #define MAX_TURN 100
-#define CHAR_START 65
+
 
 // 你也可以选用 using namespace std; 但是会污染命名空间
 using std::string;
@@ -31,8 +32,8 @@ using std::runtime_error;
 using std::memcpy;
 
 string test = "test";
-int disBetween[FIELD_MAX_HEIGHT][FIELD_MAX_WIDTH]
-[FIELD_MAX_HEIGHT][FIELD_MAX_WIDTH]; // 两点间距离加一(便于判断是否计算过)
+char disBetween[FIELD_MAX_HEIGHT][FIELD_MAX_WIDTH]
+[FIELD_MAX_HEIGHT][FIELD_MAX_WIDTH]; // 两点间距离加一(便于判断是否计算过)加CHAR_START
 
 // 平台提供的吃豆人相关逻辑处理程序
 namespace Pacman
@@ -792,6 +793,7 @@ namespace Helpers
 
 #define MAX_SEARCH_DEPTH 1 // 定义最大搜索步数
 #define MAX_DISTANCE 20 // 记录的最大距离
+#define DISTANCE_TO_IGNORE_ENEMY 20 // 与敌人距离超过多少则忽略敌人的影响
 
 namespace Value {
 	using namespace Pacman;
@@ -807,18 +809,20 @@ namespace Value {
 		width = gameField.width;
 		memcpy(fieldContent, gameField.fieldContent, sizeof(gameField.fieldContent));
 		memcpy(fieldStatic, gameField.fieldStatic, sizeof(gameField.fieldStatic));
+		memset(disBetween, CHAR_START, sizeof(disBetween));
+		find_dead_end(gameField);
 	}
 	// 设置某点周围距离辐射
-	void SetDis(int(*p)[FIELD_MAX_WIDTH], int dis) {
+	void SetDis(char(*p)[FIELD_MAX_WIDTH], int dis) {
 		for (int i = 0; i < height; i++)
 			for (int j = 0; j < width; j++) {
-				if (p[i][j] == dis) {
+				if (p[i][j] == CHAR_START + dis) {
 					GridStaticType &s = fieldStatic[i][j];
 					for (Direction dir = up; dir < 4; ++dir) {
 						if (!(s&direction2OpposingWall[dir])) {
-							int &_p = p[(i + dy[dir] + height) % height][(j + dx[dir] + width) % width];
-							if (_p == 0 || _p > dis + 1)
-								_p = dis + 1;
+							char &_p = p[(i + dy[dir] + height) % height][(j + dx[dir] + width) % width];
+							if (_p == CHAR_START || _p > CHAR_START + dis)
+								_p = CHAR_START + dis + 1;
 						}
 					}
 				}
@@ -829,44 +833,44 @@ namespace Value {
 
 	// 记录距离
 	void RecordDisBetween(int row1, int col1, int row2, int col2, int dis) {
-		disBetween[row1][col1][row2][col2] = dis;
-		disBetween[row2][col2][row1][col1] = dis;
-		disBetween[height - row1][col1][height - row2][col2] = dis;
-		disBetween[height - row2][col2][height - row1][col1] = dis;
-		disBetween[row1][width - col1][row2][width - col2] = dis;
-		disBetween[row2][width - col2][row1][width - col1] = dis;
-		disBetween[height - row1][width - col1][height - row2][width - col2] = dis;
-		disBetween[height - row2][width - col2][height - row1][width - col1] = dis;
+		disBetween[row1][col1][row2][col2] = CHAR_START + dis;
+		disBetween[row2][col2][row1][col1] = CHAR_START + dis;
+		disBetween[height - row1][col1][height - row2][col2] = CHAR_START + dis;
+		disBetween[height - row2][col2][height - row1][col1] = CHAR_START + dis;
+		disBetween[row1][width - col1][row2][width - col2] = CHAR_START + dis;
+		disBetween[row2][width - col2][row1][width - col1] = CHAR_START + dis;
+		disBetween[height - row1][width - col1][height - row2][width - col2] = CHAR_START + dis;
+		disBetween[height - row2][width - col2][height - row1][width - col1] = CHAR_START + dis;
 	}
 
 	// 返回两点间距离，-1表示超出计算范围
 	int GetDisBetween(int row1, int col1, int row2, int col2) {
-		int(*p1)[FIELD_MAX_WIDTH] = disBetween[row1][col1];
-		int(*p2)[FIELD_MAX_WIDTH] = disBetween[row2][col2];
-		if (p1[row1][col1] == 0) { // 该点还未计算过
-			p1[row1][col1] = 1;
+		char(*p1)[FIELD_MAX_WIDTH] = disBetween[row1][col1];
+		char(*p2)[FIELD_MAX_WIDTH] = disBetween[row2][col2];
+		if (p1[row1][col1] == CHAR_START) { // 该点还未计算过
+			p1[row1][col1] ++;
 			SetDis(p1, 1);
 		}
 
-		if (p2[row2][col2] == 0) {
-			p2[row2][col2] = 1;
+		if (p2[row2][col2] == CHAR_START) {
+			p2[row2][col2] ++;
 			SetDis(p2, 1);
 		}
 
 		// 两点间距离已记录过
-		if (p1[row2][col2] > 0)
-			return p1[row2][col2] - 1;
+		if (p1[row2][col2] > CHAR_START)
+			return p1[row2][col2] - CHAR_START - 1;
 		// 两点间距离未记录过
-		int minDis = 402;
+		int minDis = 201;
 		for (int i = 0; i < height; i++)
 			for (int j = 0; j < width; j++) {
-				if (p1[i][j] && p2[i][j]) {
-					int tmp = p1[i][j] + p2[i][j];
+				if (p1[i][j]>CHAR_START && p2[i][j]>CHAR_START) {
+					int tmp = p1[i][j] + p2[i][j] - 2 * CHAR_START;
 					if (tmp < minDis)
 						minDis = tmp;
 				}
 			}
-		if (minDis < 402) {
+		if (minDis < 201) {
 			int tmp = minDis - 1;
 			RecordDisBetween(row1, col1, row2, col2, tmp);
 			return tmp - 1;
@@ -875,270 +879,263 @@ namespace Value {
 			return -1; // 超出计算范围
 	}
 
-	const int valueOfDistance[20] = { 34,21,13,8,5,3,2,1,0 };
+	const int valueOfDistance[50] = { 65536,16384,8192,4096,2048,1024,512,256,128,64,32,16,8,4,2,1,0 };
 
 	int GetValue(GameField &gameField, int myID) {
 		int value = 0;
 		Player &p = gameField.players[myID];
+
+		// 记录存活敌人,以及与其距离
+		Player enemy[3];
+		int disToEnemy[3];
+		int enemyCount = 0;
+		for (int i = 0; i < 4; ++i) {
+			if (i != myID&&gameField.players[i].dead == false) {
+				enemy[enemyCount] = gameField.players[i];
+				disToEnemy[enemyCount] = GetDisBetween(p.row, p.col, enemy[enemyCount].row, enemy[enemyCount].col);
+				if (0<disToEnemy[enemyCount]&&disToEnemy[enemyCount]<=DISTANCE_TO_IGNORE_ENEMY) // 与敌人距离太远或重叠则直接忽略
+					enemyCount++;
+			}
+		}
+
+		// 吃豆估值
 		for (int i = 0; i < height; ++i) {
 			for (int j = 0; j < width; ++j) {
-				if (fieldContent[i][j] & smallFruit) {
+				if (gameField.fieldContent[i][j] & smallFruit) {
 					int dis = GetDisBetween(p.row, p.col, i, j);
-					if (dis >= 0)
-						value += valueOfDistance[dis];
+					if (dis >= 0) {
+						int disRivise = 0; // 距离修正
+						bool enemyInPath = false;
+						for (int k = 0; k < enemyCount; ++k) {
+							int enemyToFruit = GetDisBetween(enemy[k].row, enemy[k].col, i, j);							
+							if (enemyToFruit >= 0 && enemyToFruit < dis) { // 敌人离豆子更近,降低该豆估值
+								if (disToEnemy[k] > 0 && disToEnemy[k] + enemyToFruit == dis) { // 敌人在自己前方
+									disRivise ++;
+									//enemyInPath = true;
+									//break;
+								}
+							}
+							disRivise++;
+						}
+						if (enemyInPath)
+							continue;
+						value += valueOfDistance[dis + disRivise];
+					}					
 				}
 			}
 		}
 		return value;
 	}
-	// 初版吃豆估值
-	/*
-	int fieldValue[FIELD_MAX_HEIGHT][FIELD_MAX_WIDTH]; // 记录每格估值
-
-	// 吃豆估值
-	int fieldMinDistance[FIELD_MAX_HEIGHT][FIELD_MAX_WIDTH]; // 记录当前估值豆子到该格的最短距离
-	const int maxDistance = 7;
-	//	const int valueOfDistance[8] = { 34,13,8,5,3,2,1,0 };
-
-	inline void SetSmallFruitValue(int i, int j, int distance) {
-	if (distance == 0) { // 初始化估值记录，设置所有格到当前估值豆子的最短最短距离均为maxDistance
-	for (int _i = 0; _i < FIELD_MAX_HEIGHT; ++_i)
-	for (int _j = 0; _j < FIELD_MAX_WIDTH; ++_j)
-	fieldMinDistance[_i][_j] = maxDistance;
-	}
-	if (distance >= fieldMinDistance[i][j]) // 不是最短距离或达到最大距离
-	return;
-	fieldValue[i][j] += valueOfDistance[distance] - valueOfDistance[fieldMinDistance[i][j]];
-	fieldMinDistance[i][j] = distance;
-	const GridStaticType &s = fieldStatic[i][j];
-	for (Direction dir = up; dir < 4; ++dir) {
-	if (!(s & direction2OpposingWall[dir])) {
-	SetSmallFruitValue((i + dy[dir] + height) % height, (j + dx[dir] + width) % width, distance + 1);
-	}
-	}
-	}
-
-	// 全局估值
-	void SetValue(int myID) {
-	memset(fieldValue, 0, sizeof(fieldContent));
-	for (int i = 0; i < FIELD_MAX_HEIGHT; ++i)
-	for (int j = 0; j < FIELD_MAX_WIDTH; ++j) {
-	if (fieldContent[i][j] & smallFruit) {
-	SetSmallFruitValue(i, j, 0);
-	}
-	}
-	}
-	*/
+	
 	//记录死胡同——————————————————————————————————————————————
-	
-    char save_steps[FIELD_MAX_HEIGHT][FIELD_MAX_WIDTH];//最终得到的记录
-	
-	void find_dead_end(Pacman::GameField gameField)
-    {
-		int Height = gameField.height, Width = gameField.width;
-		int tmp_I = Height/2 + Height%2, tmp_J = Width/2 + Width%2;
 
-	    int save_dead_ends[FIELD_MAX_HEIGHT][FIELD_MAX_WIDTH];//标记胡同及入口
+	char save_steps[FIELD_MAX_HEIGHT][FIELD_MAX_WIDTH];//最终得到的记录
+
+	void find_dead_end(Pacman::GameField gameField)
+	{
+		int Height = gameField.height, Width = gameField.width;
+		int tmp_I = Height / 2 + Height % 2, tmp_J = Width / 2 + Width % 2;
+
+		int save_dead_ends[FIELD_MAX_HEIGHT][FIELD_MAX_WIDTH];//标记胡同及入口
 		int tmp_fieldStatic[FIELD_MAX_HEIGHT][FIELD_MAX_WIDTH];//记录地图信息并做标记
-		
-		for( int i = 0; i < FIELD_MAX_HEIGHT; i++)
+
+		for (int i = 0; i < FIELD_MAX_HEIGHT; i++)
 		{
-			for( int j =0; j < FIELD_MAX_WIDTH; j++)
+			for (int j = 0; j < FIELD_MAX_WIDTH; j++)
 			{
-				 save_dead_ends[i][j] = 0;
-				 save_steps[i][j] = CHAR_START;
+				save_dead_ends[i][j] = 0;
+				save_steps[i][j] = CHAR_START;
 			}
 		}//初始化
-		for( int i = 0; i < Height; i++)
-			for( int j = 0; j < Width; j++) tmp_fieldStatic[i][j] = gameField.fieldStatic[i][j];
-        //从gamefield读取地图信息
+		for (int i = 0; i < Height; i++)
+			for (int j = 0; j < Width; j++) tmp_fieldStatic[i][j] = gameField.fieldStatic[i][j];
+		//从gamefield读取地图信息
 
-		int flag = 1,counter = 0;
-		while( flag == 1)
+		int flag = 1, counter = 0;
+		while (flag == 1)
 		{
-		    flag = 0;
-			for ( int i = 0; i < tmp_I; i++)
-            {
-				for ( int j = 0 ; j < tmp_J; j++)
+			flag = 0;
+			for (int i = 0; i < tmp_I; i++)
+			{
+				for (int j = 0; j < tmp_J; j++)
 				{
 					counter = 0;
-					if(tmp_fieldStatic[i][j] & 1)counter++;
-					if( tmp_fieldStatic[i][j] & 2) counter++;
-					if( tmp_fieldStatic[i][j] & 4) counter++;
-					if( tmp_fieldStatic[i][j] & 8) counter++;
-					if( counter == 3)
+					if (tmp_fieldStatic[i][j] & 1)counter++;
+					if (tmp_fieldStatic[i][j] & 2) counter++;
+					if (tmp_fieldStatic[i][j] & 4) counter++;
+					if (tmp_fieldStatic[i][j] & 8) counter++;
+					if (counter == 3)
 					{
 						flag = 1;
 						int lost_wall = 15 - tmp_fieldStatic[i][j];
 						save_dead_ends[i][j] = 1;
 						tmp_fieldStatic[i][j] = 15;
-						if( lost_wall == 1) {
-							save_dead_ends[i-1][j] = save_dead_ends[i][j] -2;
-                            tmp_fieldStatic[i-1][j] += 4;
+						if (lost_wall == 1) {
+							save_dead_ends[i - 1][j] = save_dead_ends[i][j] - 2;
+							tmp_fieldStatic[i - 1][j] += 4;
 						}
-						else if( lost_wall == 2) {
-							save_dead_ends[i][j+1] = save_dead_ends[i][j] -2;
-                            tmp_fieldStatic[i][j+1] += 8;
+						else if (lost_wall == 2) {
+							save_dead_ends[i][j + 1] = save_dead_ends[i][j] - 2;
+							tmp_fieldStatic[i][j + 1] += 8;
 						}
-						else if( lost_wall == 4) {
-							save_dead_ends[i+1][j] = save_dead_ends[i][j] -2;
-							tmp_fieldStatic[i+1][j] += 1;
+						else if (lost_wall == 4) {
+							save_dead_ends[i + 1][j] = save_dead_ends[i][j] - 2;
+							tmp_fieldStatic[i + 1][j] += 1;
 						}
-						else if( lost_wall == 8) {
-							save_dead_ends[i][j-1] = save_dead_ends[i][j] -2;
-							tmp_fieldStatic[i][j-1] += 2;
+						else if (lost_wall == 8) {
+							save_dead_ends[i][j - 1] = save_dead_ends[i][j] - 2;
+							tmp_fieldStatic[i][j - 1] += 2;
 						}
 					}
 				}
-            }
+			}
 		}//第一次，找出胡同并做标记，记录在save_dead_end上
-		/*
-		save_dead_end数据类型（int）
-		0：不在胡同且一步走不到胡同
-		-1：一步有可能走到胡同
-		1：hutong*/
+		 /*
+		 save_dead_end数据类型（int）
+		 0：不在胡同且一步走不到胡同
+		 -1：一步有可能走到胡同
+		 1：hutong*/
 
-		counter = 1;flag = 1;//counter记录胡同深度
-		while( flag)
-        {
-            flag = 0;
-		for ( int i = 0; i <  tmp_I; i++)
-            {
-				for ( int j = 0 ; j <  tmp_J; j++)
+		counter = 1; flag = 1;//counter记录胡同深度
+		while (flag)
+		{
+			flag = 0;
+			for (int i = 0; i < tmp_I; i++)
+			{
+				for (int j = 0; j < tmp_J; j++)
 				{
-				    if( save_dead_ends[i][j] == -1)
-                    {
-                        if( i > 0 && save_dead_ends[i-1][j] == 1) {save_steps[i-1][j] += counter;save_dead_ends[i-1][j] = -2;flag = 1;}
-                        if(i < FIELD_MAX_HEIGHT - 1 && save_dead_ends[i+1][j] == 1 ){save_steps[i+1][j] += counter; save_dead_ends[i+1][j] = -2;flag = 1;}
-                        if(j > 0 && save_dead_ends[i][j-1] == 1) {save_steps[i][j-1] += counter;save_dead_ends[i][j-1] = -2;flag = 1;}
-                        if(j < FIELD_MAX_HEIGHT - 1 && save_dead_ends[i][j+1] == 1 ){save_steps[i][j+1] += counter; save_dead_ends[i][j+1] = -2;flag = 1;}
-                        save_dead_ends[i][j] = 0;
-                    }
+					if (save_dead_ends[i][j] == -1)
+					{
+						if (i > 0 && save_dead_ends[i - 1][j] == 1) { save_steps[i - 1][j] += counter; save_dead_ends[i - 1][j] = -2; flag = 1; }
+						if (i < FIELD_MAX_HEIGHT - 1 && save_dead_ends[i + 1][j] == 1) { save_steps[i + 1][j] += counter; save_dead_ends[i + 1][j] = -2; flag = 1; }
+						if (j > 0 && save_dead_ends[i][j - 1] == 1) { save_steps[i][j - 1] += counter; save_dead_ends[i][j - 1] = -2; flag = 1; }
+						if (j < FIELD_MAX_HEIGHT - 1 && save_dead_ends[i][j + 1] == 1) { save_steps[i][j + 1] += counter; save_dead_ends[i][j + 1] = -2; flag = 1; }
+						save_dead_ends[i][j] = 0;
+					}
 				}
-            }
-            for ( int i = 0; i <  tmp_I; i++)
-				for ( int j = 0 ; j <  tmp_J; j++)
-                    if( save_dead_ends[i][j] == -2)save_dead_ends[i][j]++;
-            counter++;
-        }//第二次，为胡同标记步数，记录在save_steps上；
-        for( int i = 0; i <  tmp_I; i++)
-        {
-            for( int j =  tmp_J; j < Width; j++)
-            {
-                save_steps[i][j] = save_steps[i][Width -j-1];
-            }
-        }
-        for( int i =  tmp_I; i < Height; i++)
-        {
-            for( int j = 0; j < Width; j++)
-            {
-                save_steps[i][j] = save_steps[Height-i-1][j];
-            }
-        }//做镜面复制，从四分之一扩展成全部地图
-		
-		/*save_steps中数据(char型)：
-		CHAR_START ：非胡同
-		CHART_START + n ：胡同里n步深度（0 < n < 40)*/
+			}
+			for (int i = 0; i < tmp_I; i++)
+				for (int j = 0; j < tmp_J; j++)
+					if (save_dead_ends[i][j] == -2)save_dead_ends[i][j]++;
+			counter++;
+		}//第二次，为胡同标记步数，记录在save_steps上；
+		for (int i = 0; i < tmp_I; i++)
+		{
+			for (int j = tmp_J; j < Width; j++)
+			{
+				save_steps[i][j] = save_steps[i][Width - j - 1];
+			}
+		}
+		for (int i = tmp_I; i < Height; i++)
+		{
+			for (int j = 0; j < Width; j++)
+			{
+				save_steps[i][j] = save_steps[Height - i - 1][j];
+			}
+		}//做镜面复制，从四分之一扩展成全部地图
+
+		 /*save_steps中数据(char型)：
+		 CHAR_START ：非胡同
+		 CHART_START + n ：胡同里n步深度（0 < n < 40)*/
 	}//——————————————————————————————————————————————————————————————
-	
-	//侦察胡同里的豆子和敌人
-	//返回的int数值表示进胡同可以获得的力量增长收益
-	int DeadEnd_Value(int y, int x, int myID,int original_strength)//y表示第一个下标，x表示第二个下标，表示自己将要走到的那个胡同格子
+
+	 //侦察胡同里的豆子和敌人
+	 //返回的int数值表示进胡同可以获得的力量增长收益
+	int DeadEnd_Value(GameField &gameField ,int y, int x, int myID, int original_strength)//y表示第一个下标，x表示第二个下标，表示自己将要走到的那个胡同格子
 	{
 		int depth;//表示估测是从胡同里第几步开始的
 		int Value = 0;
 		int Height = gameField.height, Width = gameField.width;
 		int original_y = y, original_x = x;//保存原始数据
 		int enemy = -1;//记录胡同里的敌人是第几号玩家
-		
-		depth = (int) save_steps[y][x];
-		if( (depth - CHAR_START) )
+
+		depth = (int)save_steps[y][x];
+		if ((depth - CHAR_START))
 		{
-			int Flag = 1,counter = 0;
-			while(Flag)
+			int Flag = 1, counter = 0;
+			while (Flag)
 			{
-				if( gameField.fieldContent[y][x] & smallFruit) Value += 1;
-				else if( gameField.fieldContent[y][x] & largeFruit) Value += 10;//因为吃了大豆子可以回头吃掉来堵我的强大吃豆人，所以大豆子在此处是有用的；
-				else if( gameField.fieldContent[y][x] & playerMask) 
+				if (gameField.fieldContent[y][x] & smallFruit) Value += 1;
+				else if (gameField.fieldContent[y][x] & largeFruit) Value += 10;//因为吃了大豆子可以回头吃掉来堵我的强大吃豆人，所以大豆子在此处是有用的；
+				else if (gameField.fieldContent[y][x] & playerMask)
 				{//看到敌人，在后面执行搜索，counter用于记录敌人数量
 					counter++;
-					if( gameField.fieldContent[y][x] & player1) enemy = 0;
-					else if ( gameField.fieldContent[y][x] & player2) enemy = 1;
-					else if ( gameField.fieldContent[y][x] & player3) enemy = 2;
-					else if ( gameField.fieldContent[y][x] & player4) enemy = 3;
-					if ( enemy == myID) return -100;//应该不会出现这种情况，万一出现了这种情况，为防止程序出错，就别走胡同了
+					if (gameField.fieldContent[y][x] & player1) enemy = 0;
+					else if (gameField.fieldContent[y][x] & player2) enemy = 1;
+					else if (gameField.fieldContent[y][x] & player3) enemy = 2;
+					else if (gameField.fieldContent[y][x] & player4) enemy = 3;
+					if (enemy == myID) return -100;//应该不会出现这种情况，万一出现了这种情况，为防止程序出错，就别走胡同了
 				}
 
-				if(x > 0 && ( save_steps[y][x-1] - save_steps[y][x]) == 1) x--;
-				else if(y > 0 && ( save_steps[y-1][x] - save_steps[y][x]) == 1) y--;
-				else if(x < (Width - 1) && ( save_steps[y][x+1] - save_steps[y][x]) == 1) x++;
-				else if(y < (Height -1) && ( save_steps[y+1][x] - save_steps[y][x]) == 1) y++;
+				if (x > 0 && (save_steps[y][x - 1] - save_steps[y][x]) == 1) x--;
+				else if (y > 0 && (save_steps[y - 1][x] - save_steps[y][x]) == 1) y--;
+				else if (x < (Width - 1) && (save_steps[y][x + 1] - save_steps[y][x]) == 1) x++;
+				else if (y < (Height - 1) && (save_steps[y + 1][x] - save_steps[y][x]) == 1) y++;
 				else Flag = 0;
 
 			}
-			if(!counter) return Value;
-			else if( counter > 1) return -100;//返回-100表示进入此胡同绝对会吃亏，除非万不得已否则不走
-			else if ( counter == 1)
+			if (!counter) return Value;
+			else if (counter > 1) return -100;//返回-100表示进入此胡同绝对会吃亏，除非万不得已否则不走
+			else if (counter == 1)
 			{//开始搜索
-				if( gameField.players[enemy].strength >= gameField.players[myID].strength) return -100;
+				if (gameField.players[enemy].strength >= gameField.players[myID].strength) return -100;
 				y = original_y; x = original_x;
 				Value = 0;
 				Pacman::Direction myAct = Pacman::up;
 				Pacman::Direction rivalAct = Pacman::stay;
-				int dx = 0,dy = 0,rivalcount = 0, smallest_value = 100;
-				
-					dx = 0; dy = 0;
-					dx =  x - gameField.players[myID].col ;
-					dy = y - gameField.players[myID].row;
-					if( dx == 1) myAct = Pacman::right;
-					else if ( dx == -1) myAct = Pacman::left;
-					else if ( dy == 1) myAct = Pacman::down;
-					else if ( dy == -1) myAct = Pacman::up;//确定自己向前的一部；
-					
-					int flag = 0;
-					for(rivalAct = -1; rivalAct < 4; rivalAct++)
+				int dx = 0, dy = 0, rivalcount = 0, smallest_value = 100;
+
+				dx = 0; dy = 0;
+				dx = x - gameField.players[myID].col;
+				dy = y - gameField.players[myID].row;
+				if (dx == 1) myAct = Pacman::right;
+				else if (dx == -1) myAct = Pacman::left;
+				else if (dy == 1) myAct = Pacman::down;
+				else if (dy == -1) myAct = Pacman::up;//确定自己向前的一部；
+
+				int flag = 0;
+				for (rivalAct = stay; rivalAct < 4; ++rivalAct)
+				{
+					if (gameField.ActionValid(enemy, rivalAct))
 					{
-						if (gameField.ActionValid(enemy, rivalAct))
+						flag = 1;
+						gameField.actions[enemy] = rivalAct;
+						if (gameField.ActionValid(myID, myAct)) gameField.actions[myID] = myAct;//别忘了最后回溯
+
+						if (gameField.players[myID].dead)
 						{
-							flag = 1;
-							gameField.actions[enemy] = rivalAct;
-							if(gameField.ActionValid(myID,myAct)) gameField.actions[myID] = myAct;//别忘了最后回溯
-
-							if( gameField.players[myID].dead)
-							{
-								gameField.PopState(); return -100;
-							}
-							else if( gameField.players[enemy].dead) Value = (gameField.players[enemy].strength)/2;
-							else  Value = gameField.players[myID].strength - original_strength;
-
-							if(x > 0 && ( save_steps[y][x-1] - save_steps[y][x]) == 1) x--;
-							else if(y > 0 && ( save_steps[y-1][x] - save_steps[y][x]) == 1) y--;
-							else if(x < (Width - 1) && ( save_steps[y][x+1] - save_steps[y][x]) == 1) x++;
-							else if(y < (Height -1) && ( save_steps[y+1][x] - save_steps[y][x]) == 1) y++;
-							else
-							{
-								gameField.PopState();
-								return smallest_value;
-							}
-							Value += DeadEnd_Value( y,x,myID,gameField.players[myID].strength);	//递归
-
-							if( Value < smallest_value) smallest_value = Value;
-
-							gameField.PopState();
+							gameField.PopState(); return -100;
 						}
+						else if (gameField.players[enemy].dead) Value = (gameField.players[enemy].strength) / 2;
+						else  Value = gameField.players[myID].strength - original_strength;
+
+						if (x > 0 && (save_steps[y][x - 1] - save_steps[y][x]) == 1) x--;
+						else if (y > 0 && (save_steps[y - 1][x] - save_steps[y][x]) == 1) y--;
+						else if (x < (Width - 1) && (save_steps[y][x + 1] - save_steps[y][x]) == 1) x++;
+						else if (y < (Height - 1) && (save_steps[y + 1][x] - save_steps[y][x]) == 1) y++;
+						else
+						{
+							gameField.PopState();
+							return smallest_value;
+						}
+						Value += DeadEnd_Value(gameField,y, x, myID, gameField.players[myID].strength);	//递归
+
+						if (Value < smallest_value) smallest_value = Value;
+
+						gameField.PopState();
 					}
-					return smallest_value;
+				}
+				return smallest_value;
 			}
 
 		}
 		else return -1;//如果(depth- CHART_START)值为0（char型矩阵 save_steps中CHAR_START表示非胡同格子），表示计算的这个格子并不是胡同中的某一个格子，返回-1表示调用错误；
-		/*总结返回值：
-		n（n>=0）可以获得收益为n；
-		-1 调用错误，此处不应调用此函数
-		-2到-100 别进这条胡同！
-		*/
+					   /*总结返回值：
+					   n（n>=0）可以获得收益为n；
+					   -1 调用错误，此处不应调用此函数
+					   -2到-100 别进这条胡同！
+					   */
 	}
-			
 }
 
 //Data处理
@@ -1294,6 +1291,7 @@ namespace PsychoMelon {
 
 	// 记录搜索前原力量
 	int myOriginStrength;
+	int SearchCount = 0;// 记录已搜索深度
 
 	// 记录自己行动
 	// 记录估值最大的若干种行动
@@ -1357,9 +1355,7 @@ namespace PsychoMelon {
 	};
 
 	// 声明
-	MyBestAct MyPlay(Pacman::GameField &gameField, int myID, bool ScoreOnly = true);
-
-	int SearchCount = 0;// 记录已搜索深度
+	MyBestAct MyPlay(Pacman::GameField &gameField, int myID, bool ScoreOnly = true);	
 
 						// 估值函数
 	inline int CalcValue(Pacman::GameField &gameField, int myID) {
@@ -1369,13 +1365,7 @@ namespace PsychoMelon {
 			return -1000;
 
 		if (SearchCount == MAX_SEARCH_DEPTH || !hasNextTurn) {
-			return Value::GetValue(gameField, myID);
-			// 初版估值
-			/*
-			Value::SetValue(myID);
-			Pacman::Player &p = gameField.players[myID];
-			return Value::fieldValue[p.row][p.col] + (p.strength - myOriginStrength)*Value::valueOfDistance[0];
-			*/
+			return Value::GetValue(gameField, myID) + (gameField.players[myID].strength - myOriginStrength)*Value::valueOfDistance[0];
 		}
 		else
 			return MyPlay(gameField, myID).score;
@@ -1398,7 +1388,7 @@ namespace PsychoMelon {
 		Pacman::Direction myAct = Pacman::stay;
 		for (; myAct < 4; ++myAct) {
 			if (gameField.ActionValid(myID, myAct)) {
-				int worstScore = 100000;
+				int worstScore = 10000000;
 				for (int i = 0; i < rivalAct.totalActCount; ++i) {
 					gameField.actions[myID] = myAct;
 					for (int _ = 0; _ < rivalAct.rivalCount; ++_) {
@@ -1406,6 +1396,7 @@ namespace PsychoMelon {
 					}
 					SearchCount++;
 					tmpScore = CalcValue(gameField, myID);
+
 					SearchCount--;
 					if (tmpScore < worstScore) {// MIN节点
 						worstScore = tmpScore;
@@ -1439,6 +1430,26 @@ namespace PsychoMelon {
 	}
 }
 
+namespace Taunt {
+	int DH_count=14;
+	string DH[14] = {
+		"Easily.",
+		"Is that all?",
+		"Hardly a challenge.",
+		"The evil draws close.",
+		"Other demons nearby?",
+		"I grow differently.",
+		"You dare speak to me?",
+		"I'm blind, not deaf.",
+		"I've been caged in darkness.",
+		"My soul locks the vengeance.",
+		"My brother will pay dearly for his betrayel.",
+		"I've been alone for 10,000 years.",
+		"You'll regret approaching me!",
+		"Vengeance for my own sake!"
+	};
+}
+
 int main()
 {
 	Pacman::GameField gameField;
@@ -1450,7 +1461,7 @@ int main()
 	int n = clock();
 	Value::Initialate(gameField);
 	srand(Pacman::seed + myID);
-
+	/*
 	char *p = NULL;
 	int size = (1 + 1 + gameField.height*gameField.width + gameField.height*gameField.width*gameField.height*gameField.width) * sizeof(int);
 	p = new char[size];
@@ -1460,9 +1471,9 @@ int main()
 		test += " get";
 		Data::getRoute(gameField, p);
 	}
-
+	*/
 	Pacman::Direction myAct = PsychoMelon::MyPlay(gameField, myID, false).RandomAct();
-
+	/*
 	if (p)
 	{
 		test += " set";
@@ -1483,7 +1494,7 @@ int main()
 	sprintf(a, "%d", (clock() - n));
 	test += " ";
 	test += a;
-
-	gameField.WriteOutput(myAct, test, data, globalData);
+	*/
+	gameField.WriteOutput(myAct, Taunt::DH[Helpers::RandBetween(0,Taunt::DH_count)], data, globalData);
 	return 0;
 }
