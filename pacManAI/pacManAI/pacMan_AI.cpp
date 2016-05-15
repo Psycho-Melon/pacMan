@@ -1370,12 +1370,13 @@ int main()
 		Data::getRoute(p);
 	}
 
+	// 第一回合查找死胡同
 	if (gameField.turnID == 0)
 	{
 		Value::find_dead_end(gameField);
 		Data::setDeadEnd(p);
 	}
-
+	// 读取死胡同
 	Data::getDeadEnd(p);
 
 	Pacman::Direction myAct = PsychoMelon::MyPlay(gameField, myID, false).RandomAct();
