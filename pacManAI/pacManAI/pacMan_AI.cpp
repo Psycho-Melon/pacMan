@@ -1370,6 +1370,14 @@ int main()
 		Data::getRoute(p);
 	}
 
+	if (gameField.turnID == 0)
+	{
+		Value::find_dead_end(gameField);
+		Data::setDeadEnd(p);
+	}
+
+	Data::getDeadEnd(p);
+
 	Pacman::Direction myAct = PsychoMelon::MyPlay(gameField, myID, false).RandomAct();
 
 	Data::setRoute(p);
