@@ -14,8 +14,8 @@
 #include <stdio.h>
 
 #define CHAR_START 65
-#define FIELD_MAX_HEIGHT 12
-#define FIELD_MAX_WIDTH 12
+#define FIELD_MAX_HEIGHT 20
+#define FIELD_MAX_WIDTH 20
 #define MAX_GENERATOR_COUNT 4 // 每个象限1
 #define MAX_PLAYER_COUNT 4
 #define MAX_TURN 100
@@ -34,7 +34,6 @@ using std::memcpy;
 string test = "test";
 char disBetween[FIELD_MAX_HEIGHT][FIELD_MAX_WIDTH]
 [FIELD_MAX_HEIGHT][FIELD_MAX_WIDTH]; // 两点间距离加一(便于判断是否计算过)加CHAR_START
-char save_steps[FIELD_MAX_HEIGHT][FIELD_MAX_WIDTH];//最终得到的记录
 
 // 平台提供的吃豆人相关逻辑处理程序
 namespace Pacman
@@ -800,6 +799,9 @@ namespace Value {
 	using namespace Pacman;
 	// Distance
 
+	// 函数声明
+	void find_dead_end(Pacman::GameField &);
+
 	int height, width;
 	GridContentType fieldContent[FIELD_MAX_HEIGHT][FIELD_MAX_WIDTH];
 	GridStaticType fieldStatic[FIELD_MAX_HEIGHT][FIELD_MAX_WIDTH];
@@ -811,7 +813,7 @@ namespace Value {
 		memcpy(fieldContent, gameField.fieldContent, sizeof(gameField.fieldContent));
 		memcpy(fieldStatic, gameField.fieldStatic, sizeof(gameField.fieldStatic));
 		memset(disBetween, CHAR_START, sizeof(disBetween));
-		//find_dead_end(gameField);
+		find_dead_end(gameField);
 	}
 	// 设置某点周围距离辐射
 	void SetDis(char(*p)[FIELD_MAX_WIDTH], int dis) {
@@ -930,7 +932,9 @@ namespace Value {
 	
 	//记录死胡同——————————————————————————————————————————————
 
-	void find_dead_end(Pacman::GameField & gameField)
+	char save_steps[FIELD_MAX_HEIGHT][FIELD_MAX_WIDTH];//最终得到的记录
+
+	void find_dead_end(Pacman::GameField &gameField)
 	{
 		int Height = gameField.height, Width = gameField.width;
 		int tmp_I = Height / 2 + Height % 2, tmp_J = Width / 2 + Width % 2;
@@ -1140,48 +1144,148 @@ namespace Value {
 //Data处理
 namespace Data
 {
-	using Pacman::GameField;
-	void resetData(GameField & gameField,string & data, char *p)
+	using namespace Pacman;
+	void resetData(GameField &gameField, string & data, char *p)
 	{
-		int size = 1 + FIELD_MAX_HEIGHT*FIELD_MAX_WIDTH + FIELD_MAX_HEIGHT*FIELD_MAX_WIDTH*FIELD_MAX_HEIGHT*FIELD_MAX_WIDTH;
+		int height = gameField.height;
+		int width = gameField.width;
+		int si = sizeof(int);
+		int size = (1 + 1 + height*width + height*width*height*width) * si;
 
-		memset(p, CHAR_START, size);
+		memset(p, 0, size);
+		memcpy(p, &height, si);
+		p += si;
+		memcpy(p, &width, si);
+		p -= si;
 		if (gameField.turnID)
 		{
-			strcpy(p, data.c_str());
+			memcpy(p, data.c_str(), size);
 		}
 	}
 
 	// 用于从data中获取disBetween信息
-	void getRoute(char *p)
+	void getRoute(GameField &g, char *p)
 	{
-		p += FIELD_MAX_HEIGHT*FIELD_MAX_WIDTH;
-		memcpy(disBetween, p, FIELD_MAX_HEIGHT*FIELD_MAX_WIDTH*FIELD_MAX_HEIGHT*FIELD_MAX_WIDTH);
-		p -= FIELD_MAX_HEIGHT*FIELD_MAX_WIDTH ;
+		int height = g.height;
+		int width = g.width;
+		int si = sizeof(int);
+
+		int size = (1 + 1 + height*width + height*width*height*width) * si;
+
+		memcpy(&height, p, si);
+		p += si;
+		memcpy(&width, p, si);
+		p -= si;
+
+		p += (1 + 1 + height*width) * si;
+
+		for (int i = 0; i < height; i++)
+		{
+			for (int j = 0; j < width; j++)
+			{
+				for (int k = 0; k < height; k++)
+				{
+					memcpy(disBetween[i][j][k], p, si*width);
+					p += si*width;
+					for (int _k = 0; _k < width; _k++)
+					{
+						if (disBetween[i][j][k][_k])
+						{
+							test = "good";
+						}
+					}
+				}
+			}
+		}
+		p -= size;
 	}
 
 	// 将disBetween信息写入data中以保存
-	void setRoute(char * p)
+	void setRoute(GameField &g, char * p)
 	{
-		p += FIELD_MAX_HEIGHT*FIELD_MAX_WIDTH;
-		memcpy(p, disBetween, FIELD_MAX_HEIGHT*FIELD_MAX_WIDTH*FIELD_MAX_HEIGHT*FIELD_MAX_WIDTH);
-		p -= FIELD_MAX_HEIGHT*FIELD_MAX_WIDTH;
+		int height = g.height;
+		int width = g.width;
+		int si = sizeof(int);
+
+		memcpy(p, &height, si);
+		p += si;
+		memcpy(p, &width, si);
+		p -= si;
+		int size = (1 + 1 + height*width + height*width*height*width) * si;
+
+		p += (1 + 1 + height*width) * si;
+
+		for (int i = 0; i < height; i++)
+		{
+			for (int j = 0; j < width; j++)
+			{
+				for (int k = 0; k < height; k++)
+				{
+					memcpy(p, disBetween[i][j][k], si*width);
+					p += si*width;
+					for (int _k = 0; _k < width; _k++)
+					{
+						if (disBetween[i][j][k][_k])
+						{
+							test = "bad";
+						}
+					}
+				}
+			}
+		}
+		p -= size;
 	}
 
 	/* 用于存储DeadEnd信息
 	请将DeadEnd信息存储在Height*Width的二位数组中
+	参数1 data: 存储位置string data| 参数2 deadEnd: 存储计算好deadend信息的int**指针(对于没计算的点，无胡同的点，请自行选择参数，区别表示)
 	*/
-	void getDeadEnd(char * p)
+	void DeadEnd(string & data, const int ** deadEnd)
 	{
-		memcpy(save_steps,p, FIELD_MAX_HEIGHT*FIELD_MAX_WIDTH);
+		int height;
+		int width;
+		char *p;
+		int si = sizeof(int);
+		p = const_cast<char*>(data.c_str());
+
+		memcpy(&height, p, si);
+		p += si;
+		memcpy(&width, p, si);
+		p -= si;
+
+		p += (1 + 1) * si;
+
+		for (int i = 0; i < height; i++)
+		{
+			memcpy(p, deadEnd[i], si*width);
+			p += si*width;
+		}
 	}
 
 	/* 用于读取DeadEnd信息
 	请将DeadEnd信息一次性读取到Height*Width的二位数组中
+	参数1 data: 源位置string data| 参数2 deadEnd: 用于存储deadend信息的int**指针
 	*/
-	void setDeadEnd(char * p)
+	void DeadEnd(string & data, int ** deadEnd)
 	{
-		memcpy(p, save_steps, FIELD_MAX_HEIGHT*FIELD_MAX_WIDTH);
+		int height;
+		int width;
+		char *p;
+		int si = sizeof(int);
+		p = const_cast<char*>(data.c_str());
+
+		memcpy(&height, p, si);
+		p += si;
+		memcpy(&width, p, si);
+		p -= si;
+
+		p += (1 + 1) * si;
+
+		for (int i = 0; i < height; i++)
+		{
+			memcpy(deadEnd[i], p, si*width);
+			p += si*width;
+		}
 	}
 }
 
@@ -1229,7 +1333,7 @@ namespace PsychoMelon {
 				}
 			}
 		}
-		RivalAct(const Pacman::GameField &gameField, int myID) {// 构造函数
+		RivalAct(const Pacman::GameField &gameField, int myID, bool random = false) {// 构造函数;random为true时，随机行动
 																// 记录存活对手 rivalCount,rivalID
 			rivalCount = 0;
 			for (int _ = 0; _ < MAX_PLAYER_COUNT; ++_) {
@@ -1247,6 +1351,10 @@ namespace PsychoMelon {
 					if (gameField.ActionValid(rivalID[_], d)) {
 						rivalAct[_][rivalActCount[_]++] = d;
 					}
+				}
+				if (random) {
+					rivalAct[_][0] = rivalAct[_][Helpers::RandBetween(0, rivalActCount[_])];
+					rivalActCount[_] = 1;
 				}
 				totalActCount *= rivalActCount[_];
 			}
@@ -1329,7 +1437,7 @@ namespace PsychoMelon {
 	}
 }
 
-/*namespace Taunt {
+namespace Taunt {
 	int DH_count=14;
 	string DH[14] = {
 		"Easily.",
@@ -1347,7 +1455,7 @@ namespace PsychoMelon {
 		"You'll regret approaching me!",
 		"Vengeance for my own sake!"
 	};
-}*/
+}
 
 int main()
 {
@@ -1360,33 +1468,36 @@ int main()
 	int n = clock();
 	Value::Initialate(gameField);
 	srand(Pacman::seed + myID);
+	/*
 	char *p = NULL;
-	int size = 1 + FIELD_MAX_HEIGHT*FIELD_MAX_WIDTH+ FIELD_MAX_HEIGHT*FIELD_MAX_WIDTH*FIELD_MAX_HEIGHT*FIELD_MAX_WIDTH;
+	int size = (1 + 1 + gameField.height*gameField.width + gameField.height*gameField.width*gameField.height*gameField.width) * sizeof(int);
 	p = new char[size];
-
-	Data::resetData(gameField,data, p);
-	if (gameField.turnID)
+	Data::resetData(gameField, globalData, p);
+	if (p)
 	{
-		Data::getRoute(p);
+		test += " get";
+		Data::getRoute(gameField, p);
 	}
-
-	// 第一回合查找死胡同
-	if (gameField.turnID == 0)
-	{
-		Value::find_dead_end(gameField);
-		Data::setDeadEnd(p);
-	}
-	// 读取死胡同
-	Data::getDeadEnd(p);
-
+	*/
 	Pacman::Direction myAct = PsychoMelon::MyPlay(gameField, myID, false).RandomAct();
+	/*
+	if (p)
+	{
+		test += " set";
+		Data::setRoute(gameField, p);
+	}
 
-	Data::setRoute(p);
-	p[size - 1] = 0;
-	data = p;
-	delete[] p;
+	if (p)
+	{
+		test += " gD";
+		globalData = p;
+	}
 
+	if (p)
+		delete[] p;
+		*/
 	char a[10];
+
 	sprintf(a, "%d", (clock() - n));
 	test += " ";
 	test += a;
