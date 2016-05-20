@@ -1094,9 +1094,9 @@ namespace Value {
 					if (save_dead_ends[i][j] == -1)
 					{
 						if (i > 0 && save_dead_ends[i - 1][j] == 1 && !(gameField.fieldStatic[i][j] & wallNorth)) { save_steps[i - 1][j] += counter; save_dead_ends[i - 1][j] = -2; flag = 1; }
-						if (i < FIELD_MAX_HEIGHT - 1 && save_dead_ends[i + 1][j] == 1 && !(gameField.fieldStatic[i][j] & wallSouth)) { save_steps[i + 1][j] += counter; save_dead_ends[i + 1][j] = -2; flag = 1; }
+						if (i < Height - 1 && save_dead_ends[i + 1][j] == 1 && !(gameField.fieldStatic[i][j] & wallSouth)) { save_steps[i + 1][j] += counter; save_dead_ends[i + 1][j] = -2; flag = 1; }
 						if (j > 0 && save_dead_ends[i][j - 1] == 1 && !(gameField.fieldStatic[i][j] & wallWest)) { save_steps[i][j - 1] += counter; save_dead_ends[i][j - 1] = -2; flag = 1; }
-						if (j < FIELD_MAX_HEIGHT - 1 && save_dead_ends[i][j + 1] == 1 && !(gameField.fieldStatic[i][j] & wallEast)) { save_steps[i][j + 1] += counter; save_dead_ends[i][j + 1] = -2; flag = 1; }
+						if (j < Width - 1 && save_dead_ends[i][j + 1] == 1 && !(gameField.fieldStatic[i][j] & wallEast)) { save_steps[i][j + 1] += counter; save_dead_ends[i][j + 1] = -2; flag = 1; }
 						save_dead_ends[i][j] = 0;
 					}
 				}
@@ -1116,21 +1116,22 @@ namespace Value {
 	 //返回的int数值表示进胡同可以获得的力量增长收益
 	struct DeadEnd_Value
 	{
-
 		bool i_will_die;// 如果为真，则表示在当前胡同下有比自己强的对手处在将自己逼死的位置
-		int value[26];
+		int average_value;//表示收益（包括吃豆子和吃敌人）除以胡同深度，这里有一个问题，如果我此刻处在胡同第二步，那么我模拟胡同第一步和胡同第三步时都会返回一个不错的average_value, 此时如果往第一步走，显然是错误的，所以要选择average_value最大的那个才是正确方向
+		int fruit_value;//表示单纯小豆子的数量
+		int depth;
 		DeadEnd_Value() { i_will_die = false; }
 		DeadEnd_Value& operator () (GameField &gameField, int myID)
 		{
-
-			for (int i = 0; i < 25; i++) value[i] = -1;//value[n]表示接下来走n步所获得的最大收益，value会在接下来的操作中依次赋值，如果仍为-1，则表示已经超过了胡同的长度
 			i_will_die = false;
+			fruit_value = 0;
+			average_value = 0;
+			depth = 0;
 			if (save_steps[gameField.players[myID].row][gameField.players[myID].col] == CHAR_START)
 			{
 				return *this;
 			}
 
-			value[0] = 0;
 			for (int i = 0; i < 4; i++)
 			{
 
@@ -1146,10 +1147,10 @@ namespace Value {
 					}
 				}
 			}
-			int flag = 0, y = gameField.players[myID].row, x = gameField.players[myID].col, counter = 0;
+			int flag = 0, y = gameField.players[myID].row, x = gameField.players[myID].col,tmp_counter = 0, record_ID = 0;
 			while (flag == 0)
 			{
-
+				depth++;
 				if (x > 0 && (save_steps[y][x - 1] - save_steps[y][x]) == 1 && !(gameField.fieldStatic[y][x] & wallWest)) x--;
 				else if (y > 0 && (save_steps[y - 1][x] - save_steps[y][x]) == 1 && !(gameField.fieldStatic[y][x] & wallNorth)) y--;
 				else if (x < (gameField.width - 1) && (save_steps[y][x + 1] - save_steps[y][x]) == 1 && !(gameField.fieldStatic[y][x] & wallEast)) x++;
@@ -1157,18 +1158,34 @@ namespace Value {
 				else flag = 1;
 				if (flag == 0)
 				{
-					counter++;
-					value[counter] = value[counter - 1];
-					if (gameField.fieldContent[y][x] & smallFruit) value[counter]++;
+					if (gameField.fieldContent[y][x] & smallFruit) fruit_value++;
 					else if (gameField.fieldContent[y][x] & playerMask)
 					{
-						if ((gameField.fieldContent[y][x] & player1) && (gameField.players[0].strength < gameField.players[myID].strength)) value[counter] += gameField.players[0].strength / 2;
-						if ((gameField.fieldContent[y][x] & player2) && (gameField.players[1].strength < gameField.players[myID].strength)) value[counter] += gameField.players[1].strength / 2;
-						if ((gameField.fieldContent[y][x] & player3) && (gameField.players[2].strength < gameField.players[myID].strength)) value[counter] += gameField.players[2].strength / 2;
-						if ((gameField.fieldContent[y][x] & player4) && (gameField.players[3].strength < gameField.players[myID].strength)) value[counter] += gameField.players[3].strength / 2;
+						if ((gameField.fieldContent[y][x] & player1) && (gameField.players[0].strength < gameField.players[myID].strength)) { tmp_counter++, record_ID = 0;}
+						if ((gameField.fieldContent[y][x] & player2) && (gameField.players[1].strength < gameField.players[myID].strength)) { tmp_counter++, record_ID = 1;}
+						if ((gameField.fieldContent[y][x] & player3) && (gameField.players[2].strength < gameField.players[myID].strength)) { tmp_counter++, record_ID = 2;}
+						if ((gameField.fieldContent[y][x] & player4) && (gameField.players[3].strength < gameField.players[myID].strength)) { tmp_counter++, record_ID = 3;}
 						//这里不用else，因为有可能有多个敌人
 					}
 				}
+			}
+			if( depth > 0)
+			{
+				if( tmp_counter == 0) average_value = fruit_value/depth;//返回吃豆子数量除以深度
+				else if( tmp_counter > 1) average_value = 0;
+				else if( tmp_counter == 1) 
+				{
+					int enemy_strength = gameField.players[record_ID].strength;
+					if( enemy_strength + fruit_value < gameField.players[myID].strength) average_value = enemy_strength + fruit_value/(2*depth);
+					else
+					{
+						average_value = 0;
+					}
+				}
+			}
+			else
+			{
+				average_value = 0;
 			}
 			return *this;//一定要在调用函数对象时访问DeadEnd_VaLue的成员，否则会出错。示例：if(DeadEnd_Value(gameField,myID).i_will_die == true);
 		}
