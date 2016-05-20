@@ -1021,7 +1021,7 @@ namespace Value {
 	void find_dead_end(Pacman::GameField & gameField)
 	{
 		int Height = gameField.height, Width = gameField.width;
-		int tmp_I = Height / 2 + Height % 2, tmp_J = Width / 2 + Width % 2;
+		int tmp_I = Height, tmp_J = Width;
 
 		int save_dead_ends[FIELD_MAX_HEIGHT][FIELD_MAX_WIDTH];//标记胡同及入口
 		int tmp_fieldStatic[FIELD_MAX_HEIGHT][FIELD_MAX_WIDTH];//记录地图信息并做标记
@@ -1106,20 +1106,6 @@ namespace Value {
 					if (save_dead_ends[i][j] == -2)save_dead_ends[i][j]++;
 			counter++;
 		}//第二次，为胡同标记步数，记录在save_steps上；
-		for (int i = 0; i < tmp_I; i++)
-		{
-			for (int j = tmp_J; j < Width; j++)
-			{
-				save_steps[i][j] = save_steps[i][Width - j - 1];
-			}
-		}
-		for (int i = tmp_I; i < Height; i++)
-		{
-			for (int j = 0; j < Width; j++)
-			{
-				save_steps[i][j] = save_steps[Height - i - 1][j];
-			}
-		}//做镜面复制，从四分之一扩展成全部地图
 
 		 /*save_steps中数据(char型)：
 		 CHAR_START ：非胡同
@@ -1131,14 +1117,13 @@ namespace Value {
 	struct DeadEnd_Value
 	{
 
-
 		bool i_will_die;// 如果为真，则表示在当前胡同下有比自己强的对手处在将自己逼死的位置
 		int value[26];
 		DeadEnd_Value() { i_will_die = false; }
 		DeadEnd_Value& operator () (GameField &gameField, int myID)
 		{
 
-			for (int i = 0; i < 25; i++) value[i] = -1;//value会在接下来的操作中依次赋值，如果仍为-1，则表示已经超过了胡同的长度
+			for (int i = 0; i < 25; i++) value[i] = -1;//value[n]表示接下来走n步所获得的最大收益，value会在接下来的操作中依次赋值，如果仍为-1，则表示已经超过了胡同的长度
 			i_will_die = false;
 			if (save_steps[gameField.players[myID].row][gameField.players[myID].col] == CHAR_START)
 			{
